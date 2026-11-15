@@ -126,7 +126,7 @@ bool Decodec::decodeFrame(AVFrame* frame) {
             avcodec_flush_buffers(codecCtx_);
             finishedSerial_ = 0;
             if (onSeekCallback_) {
-                onSeekCallback_();
+                onSeekCallback_(decodecSerial_);
             }
             continue;
         }
@@ -159,7 +159,7 @@ void Decodec::pushFrame(AVFrame* frame, double pts, double duration) {
 
 bool Decodec::acquireFrame(Frame& out) {
     while (true) {
-        std::optional<Frame> frameOpt = frameQue_.pop();
+        std::optional<Frame> frameOpt = frameQue_.try_pop();
         if (!frameOpt) {
             return false;
         }

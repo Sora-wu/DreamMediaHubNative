@@ -58,4 +58,4 @@ target_link_libraries(your_player PRIVATE Dream::Player)
 target_link_libraries(your_recorder PRIVATE Dream::Recorder)
 ```
 
-DreamMediaHub 将本仓库作为 `third/DreamMediaHubNative` 子模块引入。其根目录的 `build_dep.bat` / `build_dep.sh` 负责构建本仓库并安装到 DreamMediaHub 的 `third/build/<平台>`，前端通过上述 CMake 包使用 native 库。
+DreamMediaHub 将本仓库作为 `third/src/DreamMediaHubNative` 子模块引入。其根目录的 `build_dep.bat` / `build_dep.sh` 负责构建本仓库并安装到 DreamMediaHub 的 `third/build/<平台>`，前端通过上述 CMake 包使用 native 库。

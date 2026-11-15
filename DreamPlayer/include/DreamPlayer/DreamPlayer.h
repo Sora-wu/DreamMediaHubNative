@@ -8,6 +8,8 @@
 #include <DreamPlayer/define.h>
 #include <DreamPlayer/structs.h>
 
+#include <stop_token>
+
 namespace Dream {
     class DREAM_PLAYER_API DreamPlayer {
     public:
@@ -33,6 +35,7 @@ namespace Dream {
         virtual float getSpeed() = 0;
         virtual void setSpeed(double speed) = 0;
 
+        // 添加令牌，避免调用取帧时阻塞而调用了request_stop
         [[nodiscard]] virtual VideoFrame* getVideoFrame() = 0;
         [[nodiscard]] virtual AudioFrame* getAudioFrame() = 0;
 

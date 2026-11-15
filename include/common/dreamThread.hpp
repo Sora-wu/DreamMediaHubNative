@@ -31,6 +31,9 @@ public:
 
     void exit() {
         thread_.request_stop();
+        if (thread_.joinable()) {
+            thread_.join();
+        }
     }
 
     static void msleep(uint32_t ms) {

@@ -11,7 +11,7 @@
 #include <cstdint>
 
 namespace Dream {
-    using OnSeekCallback = std::function<void()>;
+    using OnSeekCallback = std::function<void(uint32_t)>;
     using OnPlaybackCompletedCallback = std::function<void()>;
 
     enum class SyncType {

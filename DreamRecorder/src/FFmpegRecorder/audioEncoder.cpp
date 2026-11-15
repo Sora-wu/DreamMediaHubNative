@@ -35,14 +35,14 @@ void AudioEncoder::addStream(AVCodecID codecID) {
 
     swrCtx_ = swr_alloc_set_opts(nullptr,
         codecCtx_->channel_layout, SAMPLER_FORMAT, codecCtx_->sample_rate,
-        codecCtx_->channel_layout, (AVSampleFormat)param_.sampleFormat, codecCtx_->sample_rate,
+        codecCtx_->channel_layout, static_cast<AVSampleFormat>(param_.sampleFormat), codecCtx_->sample_rate,
         0, nullptr);
     swr_init(swrCtx_);
 
     audioFifo_ = av_audio_fifo_alloc(codecCtx_->sample_fmt, codecCtx_->channels, 1);
 
     int outLinesize = 0;
-    convertedSampleCount_ = DreamRecorderContext::AUDIO_BUFFER_SIZE / (param_.channels * av_get_bytes_per_sample((AVSampleFormat)param_.sampleFormat));
+    convertedSampleCount_ = DreamRecorderContext::AUDIO_BUFFER_SIZE / (param_.channels * av_get_bytes_per_sample(static_cast<AVSampleFormat>(param_.sampleFormat)));
     av_samples_alloc(converted_, &outLinesize, codecCtx_->channels, convertedSampleCount_, SAMPLER_FORMAT, 0);
 }
 
@@ -61,7 +61,7 @@ void AudioEncoder::run(std::stop_token st) {
 }
 
 void AudioEncoder::pushData(const char* data, uint32_t size, uint64_t pts) {
-    const int inSampleCount = size / (param_.channels * av_get_bytes_per_sample((AVSampleFormat)param_.sampleFormat));
+    const int inSampleCount = size / (param_.channels * av_get_bytes_per_sample(static_cast<AVSampleFormat>(param_.sampleFormat)));
     // 如果计算出的采样数小于等于0，则直接返回
     if (inSampleCount <= 0) {
         return;
@@ -70,13 +70,13 @@ void AudioEncoder::pushData(const char* data, uint32_t size, uint64_t pts) {
     uint8_t* inBuf[1] = { (uint8_t*)data };
     const int convertedSampleCount = swr_convert(swrCtx_,
         converted_, convertedSampleCount_,
-        (const uint8_t**)inBuf, inSampleCount);
+        const_cast<const uint8_t**>(inBuf), inSampleCount);
     if (convertedSampleCount > 0) {
         if (av_audio_fifo_realloc(audioFifo_, av_audio_fifo_size(audioFifo_) + convertedSampleCount) != 0) {
             av_log(nullptr, AV_LOG_ERROR, "AudioEncoder::pushData av_audio_fifo_realloc error\n");
             ::exit(1);
         }
-        av_audio_fifo_write(audioFifo_, (void**)converted_, convertedSampleCount);
+        av_audio_fifo_write(audioFifo_, reinterpret_cast<void**>(converted_), convertedSampleCount);
     }
 
     const int frameSize = codecCtx_->frame_size;
@@ -95,13 +95,12 @@ void AudioEncoder::pushData(const char* data, uint32_t size, uint64_t pts) {
             av_frame_make_writable(frame);
         }
 
-        av_audio_fifo_read(audioFifo_, (void**)frame->data, frameSize);
+        av_audio_fifo_read(audioFifo_, reinterpret_cast<void**>(frame->data), frameSize);
         // 如果是第一次赋值，取pts换时间基
         if (currentPts_ == AV_NOPTS_VALUE) {
             currentPts_ = av_rescale_q(pts, AV_TIME_BASE_Q, codecCtx_->time_base);
         }
         frame->pts = currentPts_;
-        // time_base uses the sample rate, so the sample count is also the PTS increment.
         currentPts_ += frameSize;
         frameQue_.push(frame);
     }

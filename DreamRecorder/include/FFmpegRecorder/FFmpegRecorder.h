@@ -24,9 +24,6 @@ public:
     void pushAudioData(const char* data, uint32_t size, uint64_t pts) override;
 
 private:
-
-
-private:
     std::unique_ptr<Muxer> mux_;
     std::unique_ptr<VideoEncoder> videoEncoder_;
     std::unique_ptr<AudioEncoder> audioEncoder_;

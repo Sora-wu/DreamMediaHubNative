@@ -93,6 +93,9 @@ bool FFmpegPlayer::isPlaying() const {
 }
 
 void FFmpegPlayer::stop() {
+    audioDecodec_->setOnSeekCallback(nullptr);
+    videoDecodec_->setOnSeekCallback(nullptr);
+
     audioDecodec_->shutdown();
     videoDecodec_->shutdown();
 
