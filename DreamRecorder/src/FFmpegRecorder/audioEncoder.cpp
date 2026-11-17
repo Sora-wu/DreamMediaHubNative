@@ -67,7 +67,7 @@ void AudioEncoder::pushData(const char* data, uint32_t size, uint64_t pts) {
         return;
     }
 
-    uint8_t* inBuf[1] = { (uint8_t*)data };
+    uint8_t* inBuf[8] = { (uint8_t*)data };
     const int convertedSampleCount = swr_convert(swrCtx_,
         converted_, convertedSampleCount_,
         const_cast<const uint8_t**>(inBuf), inSampleCount);

@@ -44,19 +44,19 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
 
 void FFmpegRecorder::stop() {
     if (videoEncoder_) {
-        videoEncoder_->exit();
         videoEncoder_->close();
+        videoEncoder_->exit();
         videoEncoder_ = nullptr;
     }
 
     if (audioEncoder_) {
-        audioEncoder_->exit();
         audioEncoder_->close();
+        audioEncoder_->exit();
         audioEncoder_ = nullptr;
     }
 
-    mux_->exit();
     mux_->close();
+    mux_->exit();
     mux_ = nullptr;
 }
 

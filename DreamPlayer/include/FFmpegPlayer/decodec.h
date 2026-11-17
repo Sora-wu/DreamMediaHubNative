@@ -7,6 +7,7 @@
 
 #include <common/dataHandler.hpp>
 #include <common/dreamThread.hpp>
+#include <common/FFmpegPool.hpp>
 #include <FFmpegPlayer/packetQueue.h>
 #include <FFmpegPlayer/ffcore.h>
 #include <DreamPlayer/structs.h>
@@ -63,7 +64,7 @@ public:
 
 protected:
     virtual void cleanup();
-    [[nodiscard]] virtual bool decodeFrame(AVFrame* frame);
+    [[nodiscard]] virtual bool decode(AVFrame* frame);
     void pushFrame(AVFrame* frame, double pts, double duration);
     bool acquireFrame(Frame& out);
     static void releaseFrame(Frame& frame);
@@ -75,6 +76,7 @@ protected:
 
     AVCodecContext* codecCtx_ = nullptr;
     AVStream* stream_ = nullptr;
+    AVPacket* packet_ = nullptr;
     int streamIndex_ = -1;
     uint32_t decodecSerial_ = 0;
     uint32_t finishedSerial_ = 0;

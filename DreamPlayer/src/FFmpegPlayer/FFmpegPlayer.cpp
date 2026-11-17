@@ -31,7 +31,7 @@ FFmpegPlayer::FFmpegPlayer() {
 }
 
 FFmpegPlayer::~FFmpegPlayer() {
-    shutdown();
+    stop();
 }
 
 bool FFmpegPlayer::open(const char* url) {
@@ -102,6 +102,8 @@ void FFmpegPlayer::stop() {
     audioDecodec_->exit();
     videoDecodec_->exit();
     demuxer_->exit();
+
+    onPlaybackCompletedCallback_ = nullptr;
     exit();
 }
 

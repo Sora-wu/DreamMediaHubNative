@@ -17,7 +17,7 @@ namespace Dream {
         virtual bool open(const char* url) = 0;
         virtual void play() = 0;
         virtual void pause() = 0;
-        virtual bool isPlaying() const = 0;
+        [[nodiscard]] virtual bool isPlaying() const = 0;
         virtual void stop() = 0;
 
         [[nodiscard]] virtual uint32_t getWidth() = 0;

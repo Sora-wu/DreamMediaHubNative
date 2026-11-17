@@ -34,5 +34,5 @@ private:
     AVFormatContext* fmtCtx_ = nullptr;
     ConcurrentQueue<AVPacket*> videoPktQue_;
     ConcurrentQueue<AVPacket*> audioPktQue_;
-    AVPacketPool pktPool_;
+    AVPacketPool packetPool_;
 };

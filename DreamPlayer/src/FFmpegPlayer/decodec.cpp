@@ -6,11 +6,6 @@
 #include <FFmpegPlayer/decodec.h>
 #include <FFmpegPlayer/ffinstance.h>
 
-namespace {
-    bool padding = false;
-    AVPacket* paddingPkt = nullptr;
-}
-
 bool Decodec::openCodec(int streamIndex, AVStream* stream) {
     AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec) {
@@ -36,6 +31,7 @@ bool Decodec::openCodec(int streamIndex, AVStream* stream) {
     }
 
     stream_ =  stream;
+    packet_ = av_packet_alloc();
     streamIndex_ = streamIndex;
     isPause_ = false;
 
@@ -74,14 +70,19 @@ void Decodec::cleanup() {
         codecCtx_ = nullptr;
     }
 
+    if (packet_) {
+        av_packet_unref(packet_);
+        av_packet_free(&packet_);
+        packet_ = nullptr;
+    }
+
     streamIndex_ = -1;
     isPause_ = true;
 }
 
 
-bool Decodec::decodeFrame(AVFrame* frame) {
+bool Decodec::decode(AVFrame* frame) {
     // 先Frame后Packet，两个操作错开，避免更多的AVERROR(EAGAIN)
-    AVPacket* prePkt = nullptr;
     int res = AVERROR(EAGAIN);
 
     while (true) {
@@ -101,28 +102,22 @@ bool Decodec::decodeFrame(AVFrame* frame) {
         }
 
         do {
-            if (padding) {
-                padding = false;
-                av_packet_move_ref(prePkt, paddingPkt);
+            std::optional<Packet> packetOpt = pktQue_.pop();
+            if (!packetOpt) {
+                return false;
             }
-            else {
-                std::optional<Packet> packetOpt = pktQue_.pop();
-                if (!packetOpt) {
-                    return false;
-                }
 
-                auto&[pkt, serial] = *packetOpt;
-                decodecSerial_ = serial;
+            auto& [pkt, serial] = *packetOpt;
+            decodecSerial_ = serial;
+            av_packet_move_ref(packet_, &pkt);
 
-                prePkt = &pkt;
-                if (*pktQue_.getSerial() != decodecSerial_) {
-                    av_packet_unref(&pkt);
-                }
+            if (*pktQue_.getSerial() != decodecSerial_) {
+                av_packet_unref(packet_);
             }
         } while (*pktQue_.getSerial() != decodecSerial_);
 
         std::lock_guard lock(mtx_);
-        if (prePkt->data == FFINSTANCE()->getFlushPkt()->data) {
+        if (packet_->data == FFINSTANCE()->getFlushPkt()->data) {
             avcodec_flush_buffers(codecCtx_);
             finishedSerial_ = 0;
             if (onSeekCallback_) {
@@ -131,12 +126,11 @@ bool Decodec::decodeFrame(AVFrame* frame) {
             continue;
         }
 
-        if (AVERROR(EAGAIN) == avcodec_send_packet(codecCtx_, prePkt)) {
-            padding = true;
-            av_packet_move_ref(paddingPkt, prePkt);
+        if (AVERROR(EAGAIN) == avcodec_send_packet(codecCtx_, packet_)) {
+            av_log(nullptr, AV_LOG_WARNING, "avcodec_send_packet returns EAGAIN\n");
         }
 
-        av_packet_unref(prePkt);
+        av_packet_unref(packet_);
     }
 }
 

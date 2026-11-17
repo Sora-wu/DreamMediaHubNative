@@ -31,6 +31,6 @@ private:
 
     AVAudioFifo* audioFifo_ = nullptr;
     int64_t currentPts_ = AV_NOPTS_VALUE;
-    uint8_t* converted_[1] = { nullptr };
+    uint8_t* converted_[8] = {};
     int convertedSampleCount_ = 0;
 };

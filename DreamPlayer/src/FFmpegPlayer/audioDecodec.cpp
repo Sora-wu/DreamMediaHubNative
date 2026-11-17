@@ -87,7 +87,7 @@ void AudioDecodec::run(std::stop_token st) {
             paddingFrames_.clear();
         }
 
-        if (!decodeFrame(frame)) {
+        if (!decode(frame)) {
             if (st.stop_requested()) {
                 break;
             }

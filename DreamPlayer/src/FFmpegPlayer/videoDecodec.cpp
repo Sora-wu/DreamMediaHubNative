@@ -99,7 +99,7 @@ void VideoDecodec::run(std::stop_token st) {
     double pts{};
 
     while (!st.stop_requested()) {
-        if (!decodeFrame(frame)) {
+        if (!decode(frame)) {
             if (st.stop_requested()) {
                 break;
             }

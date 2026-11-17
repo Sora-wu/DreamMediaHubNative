@@ -91,7 +91,7 @@ void Muxer::run(std::stop_token st) {
             break;
         }
 
-        pktPool_.put(pkt, false);
+        packetPool_.put(pkt, false);
     }
 
     // 线程结束
@@ -117,7 +117,7 @@ void Muxer::close() {
 
 void Muxer::handle(void* data) {
     AVPacket* pkt = (AVPacket*)(data);
-    AVPacket* pushPkt =  pktPool_.get();
+    AVPacket* pushPkt =  packetPool_.get();
     av_packet_ref(pushPkt, pkt);
 
     if (pkt->stream_index == VIDEO_STREAM_INDEX) {

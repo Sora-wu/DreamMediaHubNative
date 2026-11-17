@@ -6,6 +6,7 @@
 #pragma once
 
 #include <vector>
+#include <mutex>
 
 extern "C" {
 #include <libavutil/frame.h>
@@ -53,6 +54,8 @@ public:
     }
 
     [[nodiscard]] T* get() {
+        std::lock_guard lock(mutex_);
+
         if (!pool_.empty()) {
             T* frame = pool_.back();
             pool_.pop_back();
@@ -67,6 +70,8 @@ public:
 
     // remainBuffer为false一般是在avcodec_receive_*时使用，因为内存来自编码器/解码器，需要归还
     void put(T* object, bool remainBuffer = true) {
+        std::lock_guard lock(mutex_);
+
         if (!object) {
             return;
         }
@@ -78,6 +83,8 @@ public:
     }
 
     void clear() {
+        std::lock_guard lock(mutex_);
+
         for (T* frame : pool_) {
             FFmpegTraits<T>::free(&frame);
         }
@@ -87,6 +94,7 @@ public:
 
 private:
     std::vector<T*> pool_;
+    std::mutex mutex_;
 };
 
 using AVFramePool = FFmpegPool<AVFrame>;
