@@ -7,6 +7,8 @@
 
 #include <DreamRecorder/define.h>
 
+#include <span>
+
 namespace Dream {
     enum class PixelFormat {
         RGB = 2,
@@ -14,7 +16,7 @@ namespace Dream {
     };
 
     enum class SampleFormat {
-        NONE,
+        NONE = -1,
         U8 = 0,
         S16 = 1,
         S32 = 2,
@@ -44,5 +46,10 @@ namespace Dream {
         uint32_t stride = 0;
         uint32_t size = 0;
         void* opaque = nullptr;             // native层自用
+    };
+
+    struct DREAM_RECORDER_API AudioFrameBuffer {
+        uint8_t* planes[8]{};
+        uint32_t planeBytes[8]{};
     };
 }

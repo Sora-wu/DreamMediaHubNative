@@ -32,6 +32,10 @@ bool Decodec::openCodec(int streamIndex, AVStream* stream) {
 
     stream_ =  stream;
     packet_ = av_packet_alloc();
+    if (!packet_) {
+        avcodec_free_context(&codecCtx_);
+        return false;
+    }
     streamIndex_ = streamIndex;
     isPause_ = false;
 

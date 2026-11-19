@@ -11,6 +11,7 @@ using namespace Dream;
 
 namespace {
     constexpr AVSampleFormat SAMPLER_FORMAT = AV_SAMPLE_FMT_FLTP;
+    constexpr uint32_t MAX_PLANES = 8;
 }
 
 AudioEncoder::~AudioEncoder() {
@@ -47,6 +48,10 @@ void AudioEncoder::addStream(AVCodecID codecID) {
 }
 
 void AudioEncoder::initCodecContext(AVCodecID codecID) {
+    if (param_.channels < 1 || param_.channels > MAX_PLANES) {
+        av_log(nullptr, AV_LOG_FATAL, "AudioEncoder::initCodecContext param of channels out of range\n");
+    }
+
     codecCtx_->bit_rate = param_.bitRate;
     codecCtx_->sample_rate = param_.sampleRate;
     codecCtx_->sample_fmt = SAMPLER_FORMAT;
@@ -60,17 +65,20 @@ void AudioEncoder::run(std::stop_token st) {
     av_log(nullptr, AV_LOG_INFO, "AudioEncoder::run exit\n");
 }
 
-void AudioEncoder::pushData(const char* data, uint32_t size, uint64_t pts) {
+void AudioEncoder::pushData(const AudioFrameBuffer& buffer, uint64_t pts) {
+    uint32_t size = 0;
+    for (auto planeByte : buffer.planeBytes) {
+        size += planeByte;
+    }
     const int inSampleCount = size / (param_.channels * av_get_bytes_per_sample(static_cast<AVSampleFormat>(param_.sampleFormat)));
     // 如果计算出的采样数小于等于0，则直接返回
     if (inSampleCount <= 0) {
         return;
     }
 
-    uint8_t* inBuf[8] = { (uint8_t*)data };
     const int convertedSampleCount = swr_convert(swrCtx_,
         converted_, convertedSampleCount_,
-        const_cast<const uint8_t**>(inBuf), inSampleCount);
+        const_cast<const uint8_t**>(buffer.planes), inSampleCount);
     if (convertedSampleCount > 0) {
         if (av_audio_fifo_realloc(audioFifo_, av_audio_fifo_size(audioFifo_) + convertedSampleCount) != 0) {
             av_log(nullptr, AV_LOG_ERROR, "AudioEncoder::pushData av_audio_fifo_realloc error\n");
@@ -90,7 +98,7 @@ void AudioEncoder::pushData(const char* data, uint32_t size, uint64_t pts) {
             frame->channel_layout = codecCtx_->channel_layout;
             frame->nb_samples = frameSize;
             av_frame_get_buffer(frame, 0);
-        }
+                }
         else {
             av_frame_make_writable(frame);
         }

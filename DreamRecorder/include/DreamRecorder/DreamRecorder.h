@@ -21,6 +21,6 @@ namespace Dream {
 
         // 下面两个pts都是微秒
         virtual void commitVideoBuffer(const VideoFrameBuffer& buffer, uint64_t pts) = 0;
-        virtual void pushAudioData(const char* data, uint32_t size, uint64_t pts) = 0;
+        virtual void pushAudioData(const AudioFrameBuffer& buffer, uint64_t pts) = 0;
     };
 }

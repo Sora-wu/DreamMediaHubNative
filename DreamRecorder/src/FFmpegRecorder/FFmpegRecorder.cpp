@@ -68,6 +68,6 @@ void FFmpegRecorder::commitVideoBuffer(const VideoFrameBuffer& buffer, uint64_t 
     videoEncoder_->commitVideoBuffer(buffer, pts);
 }
 
-void FFmpegRecorder::pushAudioData(const char* data, uint32_t size, uint64_t pts) {
-    audioEncoder_->pushData(data, size, pts);
+void FFmpegRecorder::pushAudioData(const AudioFrameBuffer& buffer, uint64_t pts) {
+    audioEncoder_->pushData(buffer, pts);
 }

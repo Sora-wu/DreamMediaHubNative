@@ -23,7 +23,7 @@ public:
 
     void run(std::stop_token st) override;
 
-    void pushData(const char* data, uint32_t size, uint64_t pts);
+    void pushData(const Dream::AudioFrameBuffer& buffer, uint64_t pts);
 
 private:
     Dream::AudioParam param_;
