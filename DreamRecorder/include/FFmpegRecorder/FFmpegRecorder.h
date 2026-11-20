@@ -14,14 +14,14 @@
 
 class FFmpegRecorder : public Dream::DreamRecorder {
 public:
-    ~FFmpegRecorder() override {};
+    ~FFmpegRecorder() override = default;
 
     void start(const char* path, const Dream::VideoParam& videoParam, const Dream::AudioParam& audioParam) override;
     void stop() override;
 
     Dream::VideoFrameBuffer getVideoBuffer() override;
     void commitVideoBuffer(const Dream::VideoFrameBuffer& buffer, uint64_t pts) override;
-    void pushAudioData(const Dream::AudioFrameBuffer& buffer, uint64_t pts) override;
+    bool pushAudioData(const Dream::AudioFrameBuffer& buffer, uint64_t pts) override;
 
 private:
     std::unique_ptr<Muxer> mux_;

@@ -17,24 +17,32 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
     mux_ = std::make_unique<Muxer>();
     mux_->init(path);
 
-    if (videoParam.enable) {
+    do {
+        if (!videoParam.enable) {
+            break;
+        }
         videoEncoder_ = std::make_unique<VideoEncoder>(videoParam, VIDEO_QUE_SIZE);
-        videoEncoder_->addStream(AV_CODEC_ID_H264);
+        if (!videoEncoder_->addStream(AV_CODEC_ID_H264)) {
+            break;
+        }
         videoEncoder_->setNextHandler(mux_.get());
         videoEncoder_->start("video encoder thread");
-    }
+    } while (false);
 
     do {
-        if (audioParam.enable) {
-            if (audioParam.sampleFormat == SampleFormat::NONE) {
-                av_log(nullptr, AV_LOG_ERROR, "unsupported audio format type, will output without audio stream!\n");
-                break;
-            }
-            audioEncoder_ = std::make_unique<AudioEncoder>(audioParam, AUDIO_QUE_SIZE);
-            audioEncoder_->addStream(AV_CODEC_ID_AAC);
-            audioEncoder_->setNextHandler(mux_.get());
-            audioEncoder_->start("audio encoder thread");
+        if (!audioParam.enable) {
+            break;
         }
+        if (audioParam.sampleFormat == SampleFormat::NONE) {
+            av_log(nullptr, AV_LOG_ERROR, "unsupported audio format type, will output without audio stream!\n");
+            break;
+        }
+        audioEncoder_ = std::make_unique<AudioEncoder>(audioParam, AUDIO_QUE_SIZE);
+        if (!audioEncoder_->addStream(AV_CODEC_ID_AAC)) {
+            break;
+        }
+        audioEncoder_->setNextHandler(mux_.get());
+        audioEncoder_->start("audio encoder thread");
     } while (false);
 
     AVFormatContext* fmtCtx = FFINSTANCE()->getFormatContext();
@@ -68,6 +76,6 @@ void FFmpegRecorder::commitVideoBuffer(const VideoFrameBuffer& buffer, uint64_t 
     videoEncoder_->commitVideoBuffer(buffer, pts);
 }
 
-void FFmpegRecorder::pushAudioData(const AudioFrameBuffer& buffer, uint64_t pts) {
-    audioEncoder_->pushData(buffer, pts);
+bool FFmpegRecorder::pushAudioData(const AudioFrameBuffer& buffer, uint64_t pts) {
+    return audioEncoder_->pushData(buffer, pts);
 }

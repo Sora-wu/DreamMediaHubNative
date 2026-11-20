@@ -13,7 +13,7 @@ namespace Dream {
         static DreamRecorder* createDreamRecorder();
         static void destroyDreamRecorder(DreamRecorder** recorder);
 
-        // 音频缓存大小，需要应用层约束
+        // 建议的采集块大小，也用于初始化录制转换缓冲
         static constexpr uint32_t AUDIO_BUFFER_SIZE = 4096;
     };
 }

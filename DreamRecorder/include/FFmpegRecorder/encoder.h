@@ -28,8 +28,8 @@ public:
     explicit Encoder(uint32_t queSize = 0) : frameQue_(queSize) {}
     virtual ~Encoder() {}
 
-    virtual void addStream(AVCodecID codecID);
-    virtual void initCodecContext(AVCodecID codecID) = 0;
+    virtual bool addStream(AVCodecID codecID);
+    virtual bool initCodecContext(AVCodecID codecID) = 0;
 
     void run(std::stop_token st) override;
     void close();

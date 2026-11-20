@@ -21,21 +21,25 @@ VideoEncoder::~VideoEncoder() {
     }
 }
 
-void VideoEncoder::addStream(AVCodecID codecID) {
-    Encoder::addStream(codecID);
-    stream_->time_base = AVRational{1, 90000};
+bool VideoEncoder::addStream(AVCodecID codecID) {
+    if (!Encoder::addStream(codecID)) {
+        return false;
+    }
 
+    stream_->time_base = AVRational{1, 90000};
     swsCtx_ = sws_getCachedContext(swsCtx_,
         param_.width, param_.height, (AVPixelFormat)param_.pixelFormat,
         param_.width, param_.height, PIXEL_FORMAT,
         SWS_BICUBIC, nullptr, nullptr, nullptr);
     if (!swsCtx_) {
         av_log(nullptr, AV_LOG_ERROR, "Cannot initialize the sws context\n");
-        return;
+        return false;
     }
+
+    return true;
 }
 
-void VideoEncoder::initCodecContext(AVCodecID codecID) {
+bool VideoEncoder::initCodecContext(AVCodecID codecID) {
     codecCtx_->bit_rate = param_.bitRate;
     codecCtx_->width = param_.width;
     codecCtx_->height = param_.height;
@@ -46,6 +50,8 @@ void VideoEncoder::initCodecContext(AVCodecID codecID) {
     codecCtx_->pix_fmt = PIXEL_FORMAT;
     codecCtx_->codec_id = codecID;
     codecCtx_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+
+    return true;
 }
 
 VideoFrameBuffer VideoEncoder::getVideoBuffer() {

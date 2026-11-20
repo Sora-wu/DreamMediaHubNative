@@ -56,22 +56,28 @@ bool FFmpegPlayer::open(const char* url) {
         }
     }
 
-    if (!audioDecodec_->isOpen()) {
+    exit();
+
+    if (audioDecodec_->isOpen()) {
+        audioDecodec_->reopen();
+        audioDecodec_->startDecode();
+    }
+    else {
         FFINSTANCE()->setSyncType(SyncType::VideoMaster);
     }
 
-    exit();
-    videoDecodec_->reopen();
-    audioDecodec_->reopen();
+    if (videoDecodec_->isOpen()) {
+        videoDecodec_->reopen();
+        videoDecodec_->startDecode();
+    }
 
-    start("monitor thread");
     demuxer_->startDemux();
-    videoDecodec_->startDecode();
-    audioDecodec_->startDecode();
 
     uint32_t* videoPktQueSerial = videoDecodec_->getPktQueSerial();
     uint32_t* audioPktQueSerial = audioDecodec_->getPktQueSerial();
     FFINSTANCE()->initClock(videoPktQueSerial, audioPktQueSerial);
+
+    start("monitor thread");
 
     return true;
 }

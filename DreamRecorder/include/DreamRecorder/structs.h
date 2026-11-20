@@ -49,7 +49,9 @@ namespace Dream {
     };
 
     struct DREAM_RECORDER_API AudioFrameBuffer {
+        // 交错格式使用第 0 项，平面格式每声道一项且字节数相等。
+        // 未使用项的指针和字节数均为 0，PCM 在提交调用期间须保持有效。
         uint8_t* planes[8]{};
-        uint32_t planeBytes[8]{};
+        uint32_t planeBytes[8]{};            // 各平面的有效 PCM 字节数。
     };
 }

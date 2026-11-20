@@ -184,10 +184,6 @@ void Decodec::releaseFrame(Frame& frame) {
 }
 
 bool Decodec::isDecodeFinished() {
-    if (finishedSerial_ == 0) {
-        return false;
-    }
-
     return finishedSerial_ == *pktQue_.getSerial();
 }
 

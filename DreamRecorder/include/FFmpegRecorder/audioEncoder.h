@@ -18,12 +18,15 @@ public:
     AudioEncoder(const Dream::AudioParam& param, uint32_t queSize) : Encoder(queSize), param_(param) {}
     ~AudioEncoder() override;
 
-    void addStream(AVCodecID codecID) override;
-    void initCodecContext(AVCodecID codecID) override;
+    bool addStream(AVCodecID codecID) override;
+    bool initCodecContext(AVCodecID codecID) override;
 
     void run(std::stop_token st) override;
 
-    void pushData(const Dream::AudioFrameBuffer& buffer, uint64_t pts);
+    bool pushData(const Dream::AudioFrameBuffer& buffer, uint64_t pts);
+
+private:
+    bool checkAudioBufferValid(const Dream::AudioFrameBuffer& buffer, int& sampleCount) const;
 
 private:
     Dream::AudioParam param_;
