@@ -129,10 +129,10 @@ void FFInstance::pauseMasterClock() {
 
 bool FFInstance::getMasterClockPause() {
     if (syncType_ == Dream::SyncType::VideoMaster) {
-        return clock_.getVideoClockPause();
+        return !clock_.getVideoClockPause();
     }
 
-    return clock_.getAudioClockPause();
+    return !clock_.getAudioClockPause();
 }
 
 void FFInstance::resumeMasterClock() {

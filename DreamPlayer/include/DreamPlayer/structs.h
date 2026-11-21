@@ -24,9 +24,10 @@ namespace Dream {
         uint32_t frameHeight{};
         double picWidthHeightRatio{};
 
-        char* data[3]{};
-        int len[3]{};
-        int stride[3]{};
+        // [3]为预留
+        char* data[4]{};
+        int len[4]{};
+        int stride[4]{};
     };
 
     struct DREAM_PLAYER_API AudioFrame {

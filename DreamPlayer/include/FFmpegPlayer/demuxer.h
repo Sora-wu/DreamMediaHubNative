@@ -13,6 +13,8 @@
 #include <condition_variable>
 
 extern "C" {
+#include <libavutil/avutil.h>
+
     struct AVFormatContext;
     struct AVStream;
 }
@@ -22,7 +24,7 @@ public:
     ~Demuxer() override;
 
     [[nodiscard]] bool open(const char* url);
-    [[nodiscard]] uint32_t getDuration() const {
+    [[nodiscard]] int64_t getDuration() const {
         return duration_;
     }
 
@@ -45,7 +47,7 @@ private:
 
 private:
     AVFormatContext* fmtCtx_ = nullptr;
-    uint32_t duration_ = 0;
+    int64_t duration_ = AV_NOPTS_VALUE;
 
     std::vector<AVStream*> streams_;
     bool isEof_ = false;

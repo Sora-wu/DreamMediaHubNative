@@ -31,7 +31,7 @@ public:
     [[nodiscard]] uint32_t getHeight() override;
 
     void seek(double targetPos, double seekRel) override;
-    [[nodiscard]] uint32_t getDuration() const override;
+    [[nodiscard]] int64_t getDuration() const override;
     [[nodiscard]] double getCurrentTime() override;
 
     float getSpeed() override;

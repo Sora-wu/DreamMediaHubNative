@@ -8,6 +8,7 @@
 #include <DreamPlayer/structs.h>
 
 #include <algorithm>
+#include <cmath>
 
 using namespace Dream;
 
@@ -17,29 +18,6 @@ namespace {
     constexpr double SYNC_THRESHOLD_MAX = 0.1;
     constexpr double SYNC_FRAMEDUP_THRESHOLD = 0.1;
     constexpr double SYNC_THRESHOLD_MAX_DRIFT = 0.1;
-
-    void updateVideoFrameSize(VideoFrame* videoFrame, int height, const int linesize[4]) {
-        const int planeHeights[3] = { height, height / 2, height / 2 };
-        for (uint32_t i = 0; i < 3; ++i) {
-            if (!linesize[i]) {
-                continue;
-            }
-
-            const int bufSize = linesize[i] * planeHeights[i];
-            if (bufSize == videoFrame->len[i] && videoFrame->data[i]) {
-                continue;
-            }
-
-            if (videoFrame->data[i]) {
-                delete[] videoFrame->data[i];
-                videoFrame->data[i] = nullptr;
-            }
-
-            videoFrame->data[i] = new char[bufSize]{};
-            videoFrame->len[i] = bufSize;
-            videoFrame->stride[i] = linesize[i];
-        }
-    }
 }
 
 VideoDecodec::~VideoDecodec() {
@@ -246,11 +224,9 @@ bool VideoDecodec::fillData(AVFrame* frame) {
     const int width = frame->width;
     const int height = frame->height;
 
-    videoFrame_.frameWidth = width;
-    videoFrame_.frameHeight = height;
     videoFrame_.picWidthHeightRatio = frame->sample_aspect_ratio.den == 0 ? 0 : av_q2d(frame->sample_aspect_ratio);
 
-    if (frame->format != PIXEL_FORMAT) {
+    if (frame->format != PIXEL_FORMAT || frame->width != cachedWidth_ || frame->height != cachedHeight_) {
         if (frame->format != cachedFormat_) {
             swsCtx_ = sws_getCachedContext(swsCtx_,
                 width, height, (AVPixelFormat)frame->format,
@@ -261,6 +237,8 @@ bool VideoDecodec::fillData(AVFrame* frame) {
                 return false;
             }
             cachedFormat_ = frame->format;
+            cachedWidth_ = frame->width;
+            cachedHeight_ = frame->height;
         }
 
         int outLinesize[4]{};
@@ -268,11 +246,11 @@ bool VideoDecodec::fillData(AVFrame* frame) {
             av_log(nullptr, AV_LOG_ERROR, "Cannot fill linesize\n");
             return false;
         }
-        updateVideoFrameSize(&videoFrame_, height, outLinesize);
+        updateVideoFrameSize(outLinesize);
         sws_scale(swsCtx_, frame->data, frame->linesize, 0, height, (uint8_t* const*)videoFrame_.data, videoFrame_.stride);
     }
     else {
-        updateVideoFrameSize(&videoFrame_, height, frame->linesize);
+        updateVideoFrameSize(frame->linesize);
         const int planeHeights[3] = { height, height / 2, height / 2 };
         for (uint32_t i = 0; i < 3; ++i) {
             const int stride = frame->linesize[i];
@@ -284,4 +262,27 @@ bool VideoDecodec::fillData(AVFrame* frame) {
     }
 
     return true;
+}
+
+void VideoDecodec::updateVideoFrameSize(const int linesize[4]) {
+    const int halfHeight = static_cast<int>(ceil(cachedHeight_ / 2.0));
+    const int planeHeights[3] = { cachedHeight_, halfHeight, halfHeight };
+    if (cachedWidth_ != videoFrame_.frameWidth || cachedHeight_ != videoFrame_.frameHeight) {
+        videoFrame_.frameWidth = cachedWidth_;
+        videoFrame_.frameHeight = cachedHeight_;
+
+        for (uint32_t i = 0; i < 3; ++i) {
+            if (videoFrame_.data[i]) {
+                delete[] videoFrame_.data[i];
+                videoFrame_.data[i] = nullptr;
+                videoFrame_.len[i] = 0;
+                videoFrame_.stride[i] = 0;
+            }
+
+            const int bufSize = linesize[i] * planeHeights[i];
+            videoFrame_.data[i] = new char[bufSize]{};
+            videoFrame_.len[i] = bufSize;
+            videoFrame_.stride[i] = linesize[i];
+        }
+    }
 }

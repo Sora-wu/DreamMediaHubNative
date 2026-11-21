@@ -37,7 +37,11 @@ bool Demuxer::open(const char* url) {
         streams_.push_back(fmtCtx_->streams[i]);
     }
 
-    duration_ = static_cast<uint32_t>(static_cast<double>(fmtCtx_->duration) / AV_TIME_BASE);
+    // 如果是RTSP流，duration可能为AV_NOPTS_VALUE
+    if (fmtCtx_->duration != AV_NOPTS_VALUE) {
+        duration_ = fmtCtx_->duration / AV_TIME_BASE;
+    }
+
     isEof_ = false;
     FFINSTANCE()->setFormatContext(fmtCtx_);
 

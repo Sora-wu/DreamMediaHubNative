@@ -150,7 +150,7 @@ void FFmpegPlayer::seek(double targetPos, double seekRel) {
     demuxer_->seekRequest(targetPos, seekRel);
 }
 
-uint32_t FFmpegPlayer::getDuration() const {
+int64_t FFmpegPlayer::getDuration() const {
     return demuxer_->getDuration();
 }
 

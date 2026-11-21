@@ -38,6 +38,7 @@ private:
     double getFrameDuration(const Frame& frame, const Frame& nextFrame) const;
     double calcDelay(double duration) const;
     bool fillData(AVFrame* frame);
+    void updateVideoFrameSize(const int linesize[4]);
 
 private:
     SwsContext* swsCtx_ = nullptr;
@@ -46,4 +47,6 @@ private:
     Dream::VideoFrame videoFrame_{};
     double maxFrameDuration_ = 3600.0;
     int cachedFormat_ = AV_PIX_FMT_NONE;
+    int cachedWidth_ = 0;
+    int cachedHeight_ = 0;
 };

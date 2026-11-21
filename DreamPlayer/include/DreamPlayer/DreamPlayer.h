@@ -28,7 +28,7 @@ namespace Dream {
         // 如果拖动进度条调用seek(target);
         // 按键盘方向键则seek(currentTime, offset);
         virtual void seek(double targetPos, double seekRel) = 0;
-        [[nodiscard]] virtual uint32_t getDuration() const = 0;
+        [[nodiscard]] virtual int64_t getDuration() const = 0;
         [[nodiscard]] virtual double getCurrentTime() = 0;
 
         // 速度0.5-2.0
