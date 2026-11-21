@@ -27,3 +27,4 @@ cmake-build-*/
 .idea/
 *.user
 *.log
+.DS_Store

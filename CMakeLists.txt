@@ -13,6 +13,9 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     set(PLATFORM_NAME "linux")
     file(GLOB_RECURSE COPY_FILES ${CMAKE_CURRENT_SOURCE_DIR}/third/build/${PLATFORM_NAME}/lib/*.so*)
     add_compile_definitions(PLATFORM_LINUX)
+elseif (APPLE)
+    set(PLATFORM_NAME "macos")
+    add_compile_definitions(PLATFORM_MACOS)
 elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
     set(PLATFORM_NAME "win")
     file(GLOB_RECURSE COPY_FILES ${CMAKE_CURRENT_SOURCE_DIR}/third/build/${PLATFORM_NAME}/*.dll)
@@ -52,6 +55,17 @@ install(
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_subdirectory(DreamPlayer)
 add_subdirectory(DreamRecorder)
+
+# FFmpeg 4.x uses deprecated APIs; suppress deprecation warnings in native targets only.
+foreach(native_target IN ITEMS DreamPlayer DreamRecorder)
+    if(MSVC)
+        target_compile_options(${native_target} PRIVATE /wd4996)
+    else()
+        target_compile_options(${native_target} PRIVATE
+            $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wno-deprecated-declarations>
+        )
+    endif()
+endforeach()
 
 install(
     EXPORT DreamMediaNativeTargets
