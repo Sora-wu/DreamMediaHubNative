@@ -26,7 +26,7 @@ extern "C" {
 class Encoder : public DreamThread, public DataHandler {
 public:
     explicit Encoder(uint32_t queSize = 0) : frameQue_(queSize) {}
-    virtual ~Encoder() {}
+    virtual ~Encoder() override;
 
     virtual bool addStream(AVCodecID codecID);
     virtual bool initCodecContext(AVCodecID codecID) = 0;

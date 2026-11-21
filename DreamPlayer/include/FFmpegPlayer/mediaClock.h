@@ -48,12 +48,15 @@ public:
 
     void pauseVideoClock();
     void pauseAudioClock();
-    bool getVideoClockPause();
-    bool getAudioClockPause();
+    bool getVideoClockPause() const;
+    bool getAudioClockPause() const;
 
     void resumeClock();
 
 private:
     Clock videoClock_;
+    bool videoClockAvailable_ = false;
+
     Clock audioClock_;
+    bool audioClockAvailable_ = false;
 };

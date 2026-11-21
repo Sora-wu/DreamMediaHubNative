@@ -41,6 +41,10 @@ namespace {
     }
 }
 
+Muxer::~Muxer() {
+    cleanup();
+}
+
 void Muxer::init(const char* path) {
     cleanup();
 

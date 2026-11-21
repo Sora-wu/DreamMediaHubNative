@@ -63,6 +63,7 @@ bool FFmpegPlayer::open(const char* url) {
         audioDecodec_->startDecode();
     }
     else {
+        audioDecodec_ = nullptr;
         FFINSTANCE()->setSyncType(SyncType::VideoMaster);
     }
 
@@ -70,11 +71,20 @@ bool FFmpegPlayer::open(const char* url) {
         videoDecodec_->reopen();
         videoDecodec_->startDecode();
     }
+    else {
+        videoDecodec_ = nullptr;
+        FFINSTANCE()->setSyncType(SyncType::AudioMaster);
+    }
+
+    if (!videoDecodec_ && !audioDecodec_) {
+        av_log(nullptr, AV_LOG_ERROR, "this media has no available track.\n");
+        return false;
+    }
 
     demuxer_->startDemux();
 
-    uint32_t* videoPktQueSerial = videoDecodec_->getPktQueSerial();
-    uint32_t* audioPktQueSerial = audioDecodec_->getPktQueSerial();
+    uint32_t* videoPktQueSerial = videoDecodec_ ? videoDecodec_->getPktQueSerial() : nullptr;
+    uint32_t* audioPktQueSerial = audioDecodec_ ? audioDecodec_->getPktQueSerial() : nullptr;
     FFINSTANCE()->initClock(videoPktQueSerial, audioPktQueSerial);
 
     start("monitor thread");
@@ -84,14 +94,26 @@ bool FFmpegPlayer::open(const char* url) {
 
 void FFmpegPlayer::play() {
     FFINSTANCE()->resumeMasterClock();
-    videoDecodec_->setPause(false);
-    audioDecodec_->setPause(false);
+
+    if (videoDecodec_) {
+        videoDecodec_->setPause(false);
+    }
+
+    if (audioDecodec_) {
+        audioDecodec_->setPause(false);
+    }
 }
 
 void FFmpegPlayer::pause() {
     FFINSTANCE()->pauseMasterClock();
-    videoDecodec_->setPause(true);
-    audioDecodec_->setPause(true);
+
+    if (videoDecodec_) {
+        videoDecodec_->setPause(true);
+    }
+
+    if (audioDecodec_) {
+        audioDecodec_->setPause(true);
+    }
 }
 
 bool FFmpegPlayer::isPlaying() const {
@@ -99,26 +121,29 @@ bool FFmpegPlayer::isPlaying() const {
 }
 
 void FFmpegPlayer::stop() {
-    audioDecodec_->setOnSeekCallback(nullptr);
-    videoDecodec_->setOnSeekCallback(nullptr);
+    if (audioDecodec_) {
+        audioDecodec_->setOnSeekCallback(nullptr);
+        audioDecodec_->shutdown();
+        audioDecodec_->exit();
+    }
 
-    audioDecodec_->shutdown();
-    videoDecodec_->shutdown();
+    if (videoDecodec_) {
+        videoDecodec_->setOnSeekCallback(nullptr);
+        videoDecodec_->shutdown();
+        videoDecodec_->exit();
+    }
 
-    audioDecodec_->exit();
-    videoDecodec_->exit();
     demuxer_->exit();
-
     onPlaybackCompletedCallback_ = nullptr;
     exit();
 }
 
 uint32_t FFmpegPlayer::getWidth() {
-    return videoDecodec_->getWidth();
+    return videoDecodec_ ? videoDecodec_->getWidth() : 0;
 }
 
 uint32_t FFmpegPlayer::getHeight() {
-    return videoDecodec_->getHeight();
+    return videoDecodec_ ? videoDecodec_->getHeight() : 0;
 }
 
 void FFmpegPlayer::seek(double targetPos, double seekRel) {
@@ -154,15 +179,18 @@ void FFmpegPlayer::setSpeed(double speed) {
     FFINSTANCE()->setMasterClock(pts, CURRENT_TIME);
 
     FFINSTANCE()->setSpeed(static_cast<float>(speed));
-    audioDecodec_->setSpeed(static_cast<float>(speed));
+
+    if (audioDecodec_) {
+        audioDecodec_->setSpeed(static_cast<float>(speed));
+    }
 }
 
 VideoFrame* FFmpegPlayer::getVideoFrame() {
-    return videoDecodec_->getVideoFrame();
+    return videoDecodec_ ? videoDecodec_->getVideoFrame() : nullptr;
 }
 
 AudioFrame* FFmpegPlayer::getAudioFrame() {
-    return audioDecodec_->getAudioFrame();
+    return audioDecodec_ ? audioDecodec_->getAudioFrame() : nullptr;
 }
 
 void FFmpegPlayer::updateAudioClock(double pts, uint32_t serial) {
@@ -170,11 +198,15 @@ void FFmpegPlayer::updateAudioClock(double pts, uint32_t serial) {
 }
 
 void FFmpegPlayer::setOnAudioSeekCallback(const OnSeekCallback& cb) {
-    audioDecodec_->setOnSeekCallback(cb);
+    if (audioDecodec_) {
+        audioDecodec_->setOnSeekCallback(cb);
+    }
 }
 
 void FFmpegPlayer::setOnVideoSeekCallback(const OnSeekCallback& cb) {
-    videoDecodec_->setOnSeekCallback(cb);
+    if (videoDecodec_) {
+        videoDecodec_->setOnSeekCallback(cb);
+    }
 }
 
 void FFmpegPlayer::setOnPlaybackCompletedCallback(const OnPlaybackCompletedCallback& cb) {
@@ -190,20 +222,30 @@ SyncType FFmpegPlayer::getMasterMode() const {
 }
 
 void FFmpegPlayer::handle(void* data) {
-    AVPacket* pkt = (AVPacket*)data;
+    AVPacket* pkt = static_cast<AVPacket*>(data);
 
     if (playbackCompleted_) {
-        videoDecodec_->reopen();
-        audioDecodec_->reopen();
+        if (videoDecodec_) {
+            videoDecodec_->reopen();
+        }
+
+        if (audioDecodec_) {
+            audioDecodec_->reopen();
+        }
+
         playbackCompleted_ = false;
     }
 
-    if (pkt->stream_index == videoDecodec_->getStreamIndex()) {
+    if (videoDecodec_ && pkt->stream_index == videoDecodec_->getStreamIndex()) {
         videoDecodec_->handle(pkt);
+        return;
     }
-    else if (pkt->stream_index == audioDecodec_->getStreamIndex()) {
+    if (audioDecodec_ && pkt->stream_index == audioDecodec_->getStreamIndex()) {
         audioDecodec_->handle(pkt);
+        return;
     }
+
+    av_packet_unref(pkt);
 }
 
 void FFmpegPlayer::run(std::stop_token st) {
@@ -214,8 +256,13 @@ void FFmpegPlayer::run(std::stop_token st) {
 }
 
 void FFmpegPlayer::shutdown() const {
-    videoDecodec_->shutdown();
-    audioDecodec_->shutdown();
+    if (videoDecodec_) {
+        videoDecodec_->shutdown();
+    }
+
+    if (audioDecodec_) {
+        audioDecodec_->shutdown();
+    }
 }
 
 bool FFmpegPlayer::checkPlaybackCompleted() {
@@ -228,7 +275,7 @@ bool FFmpegPlayer::checkPlaybackCompleted() {
     }
 
     auto isStreamDrained = [](Decodec* decodec) {
-        if (!decodec->isOpen()) {
+        if (!decodec) {
             return true;
         }
 

@@ -12,6 +12,13 @@ namespace {
     AVFrame* paddingFrame = nullptr;
 }
 
+Encoder::~Encoder() {
+    if (codecCtx_) {
+        avcodec_free_context(&codecCtx_);
+        codecCtx_ = nullptr;
+    }
+}
+
 bool Encoder::addStream(AVCodecID codecID) {
     AVFormatContext* fmtCtx = FFINSTANCE()->getFormatContext();
     AVCodec* codec = avcodec_find_encoder(codecID);

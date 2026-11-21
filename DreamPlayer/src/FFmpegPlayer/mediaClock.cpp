@@ -19,7 +19,7 @@ void MediaClock::Clock::init(uint32_t* qSerial) {
 }
 
 double MediaClock::Clock::getTime() const {
-    if (*queSerial != serial) {
+    if (!queSerial || *queSerial != serial) {
         return NAN;
     }
 
@@ -49,16 +49,19 @@ void MediaClock::Clock::setTime(double pts, double time) {
 
 //////////////////////////MediaClock///////////////////////////////////////
 void MediaClock::initClock(uint32_t* videoPktQueSerial, uint32_t* audioPktQueSerial) {
+    videoClockAvailable_ = videoPktQueSerial ? true : false;
+    audioClockAvailable_ = audioPktQueSerial ? true : false;
+
     videoClock_.init(videoPktQueSerial);
     audioClock_.init(audioPktQueSerial);
 }
 
 double MediaClock::getVideoClock() const {
-    return videoClock_.getTime();
+    return videoClockAvailable_ ? videoClock_.getTime() : 0.0;
 }
 
 double MediaClock::getAudioClock() const {
-    return audioClock_.getTime();
+    return audioClockAvailable_ ? audioClock_.getTime() : 0.0;
 }
 
 uint32_t MediaClock::getVideoSerial() const {
@@ -70,67 +73,101 @@ uint32_t MediaClock::getAudioSerial() const {
 }
 
 double MediaClock::getVideoPTS() const {
-    return videoClock_.pts;
+    if (videoClockAvailable_) {
+        return videoClock_.pts;
+    }
+
+    return NAN;
 }
 
 double MediaClock::getAudioPTS() const {
-    return audioClock_.pts;
+    if (audioClockAvailable_) {
+        return audioClock_.pts;
+    }
+
+    return NAN;
 }
 
 void MediaClock::setVideoClock(double pts, uint32_t serial, double time) {
-    videoClock_.setTime(pts, serial, time);
+    if (videoClockAvailable_) {
+        videoClock_.setTime(pts, serial, time);
+    }
 }
 
 void MediaClock::setAudioClock(double pts, uint32_t serial, double time) {
-    audioClock_.setTime(pts, serial, time);
+    if (audioClockAvailable_) {
+        audioClock_.setTime(pts, serial, time);
+    }
 }
 
 void MediaClock::setVideoClock(double pts, uint32_t serial) {
-    videoClock_.setTime(pts, serial);
+    if (videoClockAvailable_) {
+        videoClock_.setTime(pts, serial);
+    }
 }
 
 void MediaClock::setAudioClock(double pts, uint32_t serial) {
-    audioClock_.setTime(pts, serial);
+    if (audioClockAvailable_) {
+        audioClock_.setTime(pts, serial);
+    }
 }
 
 void MediaClock::setVideoClock(double pts, double time) {
-    videoClock_.setTime(pts, time);
+    if (videoClockAvailable_) {
+        videoClock_.setTime(pts, time);
+    }
 }
 
 void MediaClock::setAudioClock(double pts, double time) {
-    audioClock_.setTime(pts, time);
+    if (audioClockAvailable_) {
+        audioClock_.setTime(pts, time);
+    }
 }
 
 float MediaClock::getSpeed() const {
-    float speed = static_cast<float>(audioClock_.speed);
+    float speed = audioClockAvailable_ ? static_cast<float>(audioClock_.speed) : 1.0;
     if (FFINSTANCE()->getSyncType() == SyncType::VideoMaster) {
-        speed = static_cast<float>(videoClock_.speed);
+        speed = videoClockAvailable_ ? static_cast<float>(videoClock_.speed) : 1.0;
     }
     return speed;
 }
 
 void MediaClock::setSpeed(float speed) {
-    videoClock_.speed = speed;
-    audioClock_.speed = speed;
+    if (videoClockAvailable_) {
+        videoClock_.speed = speed;
+    }
+
+    if (audioClockAvailable_) {
+        audioClock_.speed = speed;
+    }
 }
 
 void MediaClock::pauseVideoClock() {
-    videoClock_.paused = true;
+    if (videoClockAvailable_) {
+        videoClock_.paused = true;
+    }
 }
 
 void MediaClock::pauseAudioClock() {
-    audioClock_.paused = true;
+    if (audioClockAvailable_) {
+        audioClock_.paused = true;
+    }
 }
 
-bool MediaClock::getVideoClockPause() {
-    return videoClock_.paused;
+bool MediaClock::getVideoClockPause() const {
+    return videoClockAvailable_ ? videoClock_.paused : true;
 }
 
-bool MediaClock::getAudioClockPause() {
-    return audioClock_.paused;
+bool MediaClock::getAudioClockPause() const {
+    return audioClockAvailable_ ? audioClock_.paused : true;
 }
 
 void MediaClock::resumeClock() {
-    videoClock_.paused = false;
-    audioClock_.paused = false;
+    if (videoClockAvailable_) {
+        videoClock_.paused = false;
+    }
+
+    if (audioClockAvailable_) {
+        audioClock_.paused = false;
+    }
 }

@@ -18,7 +18,7 @@ extern "C" {
 class Muxer : public DreamThread, public DataHandler {
 public:
     Muxer() {}
-    ~Muxer() override {}
+    ~Muxer() override;
 
     void init(const char* path);
     void cleanup();
