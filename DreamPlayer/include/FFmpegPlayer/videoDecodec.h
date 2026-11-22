@@ -15,10 +15,11 @@ class MediaClock;
 
 class VideoDecodec : public Decodec {
 public:
-    explicit VideoDecodec(std::size_t frameQueueSize) : Decodec(frameQueueSize) {}
+    VideoDecodec(const AVPacket& flushPkt, MediaClock& clock, std::size_t frameQueueSize)
+        : Decodec(flushPkt, frameQueueSize), mediaClock_(clock) {}
     ~VideoDecodec() override;
 
-    bool openCodec(int streamIndex, AVStream* stream) override;
+    bool openCodec(int streamIndex, AVStream* stream, AVFormatContext& input);
     void reopen() override;
     void startDecode() override;
 
@@ -42,6 +43,8 @@ private:
 
 private:
     SwsContext* swsCtx_ = nullptr;
+    AVFormatContext* input_ = nullptr;
+    MediaClock& mediaClock_;
 
     Frame heldFrame_{};
     Dream::VideoFrame videoFrame_{};

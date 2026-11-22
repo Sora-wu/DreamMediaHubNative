@@ -5,7 +5,6 @@
 
 #include <FFmpegRecorder/encoder.h>
 #include <FFmpegRecorder/ffcore.h>
-#include <FFmpegRecorder/ffinstance.h>
 
 namespace {
     bool padding = false;
@@ -19,8 +18,7 @@ Encoder::~Encoder() {
     }
 }
 
-bool Encoder::addStream(AVCodecID codecID) {
-    AVFormatContext* fmtCtx = FFINSTANCE()->getFormatContext();
+bool Encoder::addStream(AVFormatContext& output, AVCodecID codecID) {
     AVCodec* codec = avcodec_find_encoder(codecID);
     if (!codec) {
         av_log(nullptr, AV_LOG_ERROR, "avcodec_find_encoder %d fail!\n", codecID);
@@ -43,7 +41,7 @@ bool Encoder::addStream(AVCodecID codecID) {
         return false;
     }
 
-    stream_ = avformat_new_stream(fmtCtx, codec);
+    stream_ = avformat_new_stream(&output, codec);
     if (!stream_) {
         av_log(nullptr, AV_LOG_ERROR, "avformat_new_stream fail!\n");
         return false;

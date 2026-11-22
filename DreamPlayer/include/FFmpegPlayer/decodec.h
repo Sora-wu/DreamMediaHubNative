@@ -7,12 +7,12 @@
 
 #include <common/dataHandler.hpp>
 #include <common/dreamThread.hpp>
-#include <common/FFmpegPool.hpp>
 #include <FFmpegPlayer/packetQueue.h>
 #include <FFmpegPlayer/ffcore.h>
 #include <DreamPlayer/structs.h>
 
 #include <mutex>
+#include <cassert>
 
 struct Frame {
     AVFrame* frame{};
@@ -23,7 +23,7 @@ struct Frame {
 
 class Decodec : public DataHandler, public DreamThread {
 public:
-    explicit Decodec(std::size_t frameQueueSize) : frameQue_(frameQueueSize) {}
+    explicit Decodec(const AVPacket& flushPkt, std::size_t frameQueueSize) : flushPkt_(flushPkt), frameQue_(frameQueueSize) {}
     ~Decodec() override {
         Decodec::cleanup();
     }
@@ -40,7 +40,7 @@ public:
         return streamIndex_;
     }
 
-    [[nodiscard]] uint32_t* getPktQueSerial() {
+    [[nodiscard]] const std::atomic<uint32_t>* getPktQueSerial() const {
         return pktQue_.getSerial();
     }
 
@@ -70,7 +70,8 @@ protected:
     static void releaseFrame(Frame& frame);
 
 protected:
-    PacketQueue pktQue_;
+    const AVPacket& flushPkt_;
+    PacketQueue pktQue_{flushPkt_};
     ConcurrentQueue<Frame> frameQue_;
     std::mutex mtx_{};
 

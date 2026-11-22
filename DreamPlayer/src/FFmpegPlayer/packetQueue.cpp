@@ -4,11 +4,10 @@
 //
 
 #include <FFmpegPlayer/packetQueue.h>
-#include <FFmpegPlayer/ffinstance.h>
 
 void PacketQueue::push(AVPacket* pkt) {
     Packet packet{};
-    if (pkt == FFINSTANCE()->getFlushPkt()) {
+    if (pkt == &flushPkt_) {
         packet.packet = *pkt;
         ++serial_;
     }

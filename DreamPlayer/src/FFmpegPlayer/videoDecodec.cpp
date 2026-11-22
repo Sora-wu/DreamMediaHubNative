@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegPlayer/videoDecodec.h>
-#include <FFmpegPlayer/ffinstance.h>
+#include <FFmpegPlayer/mediaClock.h>
 #include <DreamPlayer/structs.h>
 
 #include <algorithm>
@@ -35,13 +35,13 @@ VideoDecodec::~VideoDecodec() {
     }
 }
 
-bool VideoDecodec::openCodec(int streamIndex, AVStream* stream) {
+bool VideoDecodec::openCodec(int streamIndex, AVStream* stream, AVFormatContext& input) {
     if (!Decodec::openCodec(streamIndex, stream)) {
         return false;
     }
 
-    AVFormatContext* fmtCtx = FFINSTANCE()->getFormatContext();
-    maxFrameDuration_ = (fmtCtx->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
+    input_ = &input;
+    maxFrameDuration_ = (input_->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
     return true;
 }
 
@@ -69,9 +69,8 @@ void VideoDecodec::run(std::stop_token st) {
         return;
     }
 
-    AVFormatContext* fmtCtx = FFINSTANCE()->getFormatContext();
     AVRational timeBase = stream_->time_base;
-    AVRational frameRate = av_guess_frame_rate(fmtCtx, stream_, nullptr);
+    AVRational frameRate = av_guess_frame_rate(input_, stream_, nullptr);
     double duration{};
     double pts{};
 
@@ -83,7 +82,7 @@ void VideoDecodec::run(std::stop_token st) {
             continue;
         }
 
-        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(fmtCtx, stream_, frame);
+        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(input_, stream_, frame);
         duration = av_q2d(frameRate) > 0 ? av_q2d(av_inv_q(frameRate)) : 0.0;
         pts = frame->pts == AV_NOPTS_VALUE ? NAN : frame->pts * av_q2d(timeBase);
         pushFrame(frame, pts, duration);
@@ -110,7 +109,7 @@ VideoFrame* VideoDecodec::getVideoFrame() {
             decodecTimer_ = CURRENT_TIME;
             decodeTimerValid_ = true;
             if (!isnan(heldFrame_.pts)) {
-                FFINSTANCE()->setVideoClock(heldFrame_.pts, heldFrame_.serial, decodecTimer_);
+                mediaClock_.setVideoClock(heldFrame_.pts, heldFrame_.serial, decodecTimer_);
             }
 
             if (fillData(heldFrame_.frame)) {
@@ -183,12 +182,12 @@ double VideoDecodec::getFrameDuration(const Frame& frame, const Frame& nextFrame
 }
 
 double VideoDecodec::calcDelay(double duration) const {
-    if (FFINSTANCE()->getSyncType() == SyncType::VideoMaster) {
+    if (mediaClock_.getMasterMode() == SyncType::VideoMaster) {
         return duration;
     }
 
     double delay = duration;
-    const double diff = FFINSTANCE()->getVideoClock() - FFINSTANCE()->getMasterClock();
+    const double diff = mediaClock_.getVideoClock() - mediaClock_.getMasterClock();
     const double syncThreshold = std::clamp(delay, SYNC_THRESHOLD_MIN, SYNC_THRESHOLD_MAX);
     if (!isnan(diff) && std::fabs(diff) < maxFrameDuration_) {
         if (diff <= -syncThreshold) {
@@ -206,7 +205,7 @@ double VideoDecodec::calcDelay(double duration) const {
 }
 
 bool VideoDecodec::shouldDropLateFrame(double time) const {
-    if (FFINSTANCE()->getSyncType() == SyncType::VideoMaster || frameQue_.size() <= 1) {
+    if (mediaClock_.getMasterMode() == SyncType::VideoMaster || frameQue_.size() <= 1) {
         return false;
     }
 

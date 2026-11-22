@@ -17,7 +17,7 @@ public:
     VideoEncoder(const Dream::VideoParam& param, uint32_t queSize) : Encoder(queSize), param_(param) {}
     ~VideoEncoder() override;
 
-    bool addStream(AVCodecID codecID) override;
+    bool addStream(AVFormatContext& output, AVCodecID codecID) override;
     bool initCodecContext(AVCodecID codecID) override;
 
     Dream::VideoFrameBuffer getVideoBuffer();

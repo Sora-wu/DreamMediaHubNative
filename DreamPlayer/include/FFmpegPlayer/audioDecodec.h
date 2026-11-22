@@ -19,9 +19,12 @@ namespace Dream {
     struct AudioFrame;
 }
 
+class MediaClock;
+
 class AudioDecodec : public Decodec {
 public:
-    explicit AudioDecodec(std::size_t frameQueueSize) : Decodec(frameQueueSize) {}
+    AudioDecodec(const AVPacket& flushPkt, MediaClock& clock, std::size_t frameQueueSize)
+        : Decodec(flushPkt, frameQueueSize), mediaClock_(clock) {}
     ~AudioDecodec() override;
 
     bool openCodec(int streamIndex, AVStream* stream) override;
@@ -52,6 +55,7 @@ private:
     std::unique_ptr<AudioSpeedFilter> audioSpeedFilter_;
     std::atomic<float> speed_ = 1.0f;
     std::vector<AVFrame*> paddingFrames_;
+    MediaClock& mediaClock_;
 
     uint64_t cachedChannelLayout_ = 0;
     int cachedFormat_ = AV_SAMPLE_FMT_NONE;

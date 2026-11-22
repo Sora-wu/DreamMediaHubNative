@@ -8,9 +8,9 @@
 #include <DreamPlayer/DreamPlayer.h>
 #include <common/dataHandler.hpp>
 #include <common/dreamThread.hpp>
+#include <FFmpegPlayer/mediaClock.h>
 
 #include <memory>
-#include <mutex>
 
 class Demuxer;
 class VideoDecodec;
@@ -62,7 +62,8 @@ private:
     void markPlaybackCompleted();
 
 private:
-    bool pause_ = false;
+    MediaClock clock_;
+    std::atomic<double> cachedTime_{0.0};
     bool playbackCompleted_ = false;
 
     Dream::OnPlaybackCompletedCallback onPlaybackCompletedCallback_ = nullptr;
@@ -70,4 +71,5 @@ private:
     std::unique_ptr<Demuxer> demuxer_;
     std::unique_ptr<VideoDecodec> videoDecodec_;
     std::unique_ptr<AudioDecodec> audioDecodec_;
+
 };

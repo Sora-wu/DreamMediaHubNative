@@ -4,7 +4,6 @@
 //
 
 #include <FFmpegPlayer/decodec.h>
-#include <FFmpegPlayer/ffinstance.h>
 
 bool Decodec::openCodec(int streamIndex, AVStream* stream) {
     AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
@@ -58,7 +57,7 @@ void Decodec::startDecode() {
 }
 
 void Decodec::handle(void* data) {
-    pktQue_.push((AVPacket*)data);
+    pktQue_.push(static_cast<AVPacket*>(data));
 }
 
 void Decodec::shutdown() {
@@ -121,7 +120,7 @@ bool Decodec::decode(AVFrame* frame) {
         } while (*pktQue_.getSerial() != decodecSerial_);
 
         std::lock_guard lock(mtx_);
-        if (packet_->data == FFINSTANCE()->getFlushPkt()->data) {
+        if (packet_->data == flushPkt_.data) {
             avcodec_flush_buffers(codecCtx_);
             finishedSerial_ = -1;
             if (onSeekCallback_) {

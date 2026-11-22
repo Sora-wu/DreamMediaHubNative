@@ -18,7 +18,7 @@ public:
     AudioEncoder(const Dream::AudioParam& param, uint32_t queSize) : Encoder(queSize), param_(param) {}
     ~AudioEncoder() override;
 
-    bool addStream(AVCodecID codecID) override;
+    bool addStream(AVFormatContext& output, AVCodecID codecID) override;
     bool initCodecContext(AVCodecID codecID) override;
 
     void run(std::stop_token st) override;

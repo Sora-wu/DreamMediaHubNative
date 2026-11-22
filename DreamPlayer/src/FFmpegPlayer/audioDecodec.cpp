@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegPlayer/audioDecodec.h>
-#include <FFmpegPlayer/ffinstance.h>
+#include <FFmpegPlayer/mediaClock.h>
 #include <DreamPlayer/structs.h>
 #include <DreamPlayer/DreamPlayerContext.h>
 
@@ -220,9 +220,9 @@ bool AudioDecodec::adjustSamples(AVFrame* frame) {
     }
 
     const int nbSamples = frame->nb_samples;
-    if (FFINSTANCE()->getSyncType() != SyncType::AudioMaster) {
+    if (mediaClock_.getMasterMode() != SyncType::AudioMaster) {
         int wantedNbSamples = 0;
-        const double diff = FFINSTANCE()->getAudioClock() - FFINSTANCE()->getMasterClock();
+        const double diff = mediaClock_.getAudioClock() - mediaClock_.getMasterClock();
 
         if (!std::isnan(diff) && std::fabs(diff) < AV_NOSYNC_THRESHOLD) {
             audioDiffCum_ = diff + audioDiffAvgCoef_ * audioDiffCum_;

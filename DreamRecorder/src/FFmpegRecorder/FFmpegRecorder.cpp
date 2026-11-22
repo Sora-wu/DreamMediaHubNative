@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegRecorder/FFmpegRecorder.h>
-#include <FFmpegRecorder/ffinstance.h>
+#include <FFmpegRecorder/ffcore.h>
 
 namespace {
     constexpr uint32_t VIDEO_QUE_SIZE = 5;
@@ -15,14 +15,14 @@ using namespace Dream;
 
 void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const AudioParam& audioParam) {
     mux_ = std::make_unique<Muxer>();
-    mux_->init(path);
+    AVFormatContext& output = mux_->init(path);
 
     do {
         if (!videoParam.enable) {
             break;
         }
         videoEncoder_ = std::make_unique<VideoEncoder>(videoParam, VIDEO_QUE_SIZE);
-        if (!videoEncoder_->addStream(AV_CODEC_ID_H264)) {
+        if (!videoEncoder_->addStream(output, AV_CODEC_ID_H264)) {
             videoEncoder_ = nullptr;
             break;
         }
@@ -39,7 +39,7 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
             break;
         }
         audioEncoder_ = std::make_unique<AudioEncoder>(audioParam, AUDIO_QUE_SIZE);
-        if (!audioEncoder_->addStream(AV_CODEC_ID_AAC)) {
+        if (!audioEncoder_->addStream(output, AV_CODEC_ID_AAC)) {
             audioEncoder_ = nullptr;
             break;
         }
@@ -52,8 +52,7 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
         return;
     }
 
-    AVFormatContext* fmtCtx = FFINSTANCE()->getFormatContext();
-    av_dump_format(fmtCtx, 0, nullptr, true);
+    av_dump_format(&output, 0, nullptr, true);
     mux_->start("muxer thread");
 }
 

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <common/concurrentQueue.hpp>
 #include <FFmpegPlayer/ffcore.h>
 
@@ -15,8 +16,8 @@ struct Packet {
 
 class PacketQueue {
 public:
-    PacketQueue() = default;
-    explicit PacketQueue(std::size_t maxSize) : que_(maxSize) {}
+    explicit PacketQueue(const AVPacket& flushPkt) : flushPkt_(flushPkt) {}
+    PacketQueue(const AVPacket& flushPkt, std::size_t maxSize) : flushPkt_(flushPkt), que_(maxSize) {}
 
     void push(AVPacket* pkt);
     std::optional<Packet> pop();
@@ -28,8 +29,7 @@ public:
         serial_ = serial;
     }
 
-    [[nodiscard]] uint32_t* getSerial() {
-        std::lock_guard lk(mutex_);
+    [[nodiscard]] const std::atomic<uint32_t>* getSerial() const {
         return &serial_;
     }
 
@@ -44,8 +44,9 @@ public:
     }
 
 private:
+    const AVPacket& flushPkt_;
     ConcurrentQueue<Packet> que_{};
-    uint32_t serial_ = 0;
+    std::atomic<uint32_t> serial_ = 0;
     uint64_t duration_ = 0;
     uint32_t packetSize_ = 0;
 

@@ -21,6 +21,7 @@ extern "C" {
     struct AVPacket;
     struct AVCodecContext;
     struct AVStream;
+    struct AVFormatContext;
 }
 
 class Encoder : public DreamThread, public DataHandler {
@@ -28,7 +29,7 @@ public:
     explicit Encoder(uint32_t queSize = 0) : frameQue_(queSize) {}
     virtual ~Encoder() override;
 
-    virtual bool addStream(AVCodecID codecID);
+    virtual bool addStream(AVFormatContext& output, AVCodecID codecID);
     virtual bool initCodecContext(AVCodecID codecID) = 0;
 
     void run(std::stop_token st) override;

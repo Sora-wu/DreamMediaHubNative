@@ -21,8 +21,8 @@ VideoEncoder::~VideoEncoder() {
     }
 }
 
-bool VideoEncoder::addStream(AVCodecID codecID) {
-    if (!Encoder::addStream(codecID)) {
+bool VideoEncoder::addStream(AVFormatContext& output, AVCodecID codecID) {
+    if (!Encoder::addStream(output, codecID)) {
         return false;
     }
 

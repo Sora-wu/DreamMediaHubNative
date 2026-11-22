@@ -20,7 +20,7 @@ public:
     Muxer() {}
     ~Muxer() override;
 
-    void init(const char* path);
+    AVFormatContext& init(const char* path);
     void cleanup();
     void run(std::stop_token st) override;
     void close();

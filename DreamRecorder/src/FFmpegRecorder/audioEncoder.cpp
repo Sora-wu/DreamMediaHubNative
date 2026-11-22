@@ -34,8 +34,8 @@ AudioEncoder::~AudioEncoder() {
     }
 }
 
-bool AudioEncoder::addStream(AVCodecID codecID) {
-    if (!Encoder::addStream(codecID)) {
+bool AudioEncoder::addStream(AVFormatContext& output, AVCodecID codecID) {
+    if (!Encoder::addStream(output, codecID)) {
         return false;
     }
 

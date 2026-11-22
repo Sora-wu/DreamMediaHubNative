@@ -5,12 +5,16 @@
 
 #include <FFmpegPlayer/demuxer.h>
 #include <FFmpegPlayer/ffcore.h>
-#include <FFmpegPlayer/ffinstance.h>
 
 #include <mutex>
 #include <chrono>
 
 using namespace::std::literals;
+
+Demuxer::Demuxer(MediaClock& mediaClock) : mediaClock_(mediaClock) {
+    av_init_packet(&flushPkt_);
+    flushPkt_.data = reinterpret_cast<uint8_t*>(&flushPkt_);
+}
 
 Demuxer::~Demuxer() {
     if (fmtCtx_) {
@@ -43,7 +47,6 @@ bool Demuxer::open(const char* url) {
     }
 
     isEof_ = false;
-    FFINSTANCE()->setFormatContext(fmtCtx_);
 
     av_dump_format(fmtCtx_, 0, url, 0);
 
@@ -116,17 +119,16 @@ void Demuxer::seek() {
     }
     else {
         // seek之后需要flush
-        AVPacket* flushPkt = FFINSTANCE()->getFlushPkt();
         for (auto stream : streams_) {
-            flushPkt->stream_index = stream->index;
-            handle(flushPkt);
+            flushPkt_.stream_index = stream->index;
+            handle(&flushPkt_);
         }
 
         av_log(nullptr, AV_LOG_INFO, "demuxer seek to %f\n", seekTargetPos_);
-        FFINSTANCE()->resumeMasterClock();
+        mediaClock_.resumeClock();
         // seek成功更新时钟
-        FFINSTANCE()->setAudioClock(seekTargetPos_, CURRENT_TIME);
-        FFINSTANCE()->setVideoClock(seekTargetPos_, CURRENT_TIME);
+        mediaClock_.setAudioClock(seekTargetPos_, CURRENT_TIME);
+        mediaClock_.setVideoClock(seekTargetPos_, CURRENT_TIME);
 
         isEof_ = false;
     }

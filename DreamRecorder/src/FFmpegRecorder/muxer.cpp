@@ -5,7 +5,6 @@
 
 #include <FFmpegRecorder/muxer.h>
 #include <FFmpegRecorder/ffcore.h>
-#include <FFmpegRecorder/ffinstance.h>
 
 #include <cstring>
 #include <unordered_map>
@@ -45,7 +44,7 @@ Muxer::~Muxer() {
     cleanup();
 }
 
-void Muxer::init(const char* path) {
+AVFormatContext& Muxer::init(const char* path) {
     cleanup();
 
     const char* formatName = getFormatName(path);
@@ -61,7 +60,7 @@ void Muxer::init(const char* path) {
         ::exit(1);
     }
 
-    FFINSTANCE()->setFormatContext(fmtCtx_);
+    return *fmtCtx_;
 }
 
 void Muxer::cleanup() {

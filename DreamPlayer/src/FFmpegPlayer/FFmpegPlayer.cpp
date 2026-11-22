@@ -8,7 +8,6 @@
 #include <FFmpegPlayer/demuxer.h>
 #include <FFmpegPlayer/videoDecodec.h>
 #include <FFmpegPlayer/audioDecodec.h>
-#include <FFmpegPlayer/ffinstance.h>
 
 #include <algorithm>
 
@@ -23,11 +22,12 @@ FFmpegPlayer::FFmpegPlayer() {
     avdevice_register_all();
     avformat_network_init();
 
-    demuxer_ = std::make_unique<Demuxer>();
+    demuxer_ = std::make_unique<Demuxer>(clock_);
     demuxer_->setNextHandler(this);
 
-    videoDecodec_ = std::make_unique<VideoDecodec>(FRAME_VIDEO_SIZE);
-    audioDecodec_ = std::make_unique<AudioDecodec>(FRAME_AUDIO_SIZE);
+    const AVPacket& flushPkt = demuxer_->getFlushPkt();
+    videoDecodec_ = std::make_unique<VideoDecodec>(flushPkt, clock_, FRAME_VIDEO_SIZE);
+    audioDecodec_ = std::make_unique<AudioDecodec>(flushPkt, clock_, FRAME_AUDIO_SIZE);
 }
 
 FFmpegPlayer::~FFmpegPlayer() {
@@ -36,6 +36,7 @@ FFmpegPlayer::~FFmpegPlayer() {
 
 bool FFmpegPlayer::open(const char* url) {
     shutdown();
+    cachedTime_ = 0.0;
 
     if (!demuxer_->open(url)) {
         return false;
@@ -45,7 +46,7 @@ bool FFmpegPlayer::open(const char* url) {
     for (uint32_t i = 0; i < streams.size(); ++i) {
         AVStream* stream = streams[i];
         if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && !videoDecodec_->isOpen()) {
-            if (!videoDecodec_->openCodec(i, stream)) {
+            if (!videoDecodec_->openCodec(i, stream, *demuxer_->getAVFormatContext())) {
                 return false;
             }
         }
@@ -60,20 +61,18 @@ bool FFmpegPlayer::open(const char* url) {
 
     if (audioDecodec_->isOpen()) {
         audioDecodec_->reopen();
-        audioDecodec_->startDecode();
     }
     else {
         audioDecodec_ = nullptr;
-        FFINSTANCE()->setSyncType(SyncType::VideoMaster);
+        clock_.setMasterMode(SyncType::VideoMaster);
     }
 
     if (videoDecodec_->isOpen()) {
         videoDecodec_->reopen();
-        videoDecodec_->startDecode();
     }
     else {
         videoDecodec_ = nullptr;
-        FFINSTANCE()->setSyncType(SyncType::AudioMaster);
+        clock_.setMasterMode(SyncType::AudioMaster);
     }
 
     if (!videoDecodec_ && !audioDecodec_) {
@@ -81,19 +80,24 @@ bool FFmpegPlayer::open(const char* url) {
         return false;
     }
 
+    const auto* videoPktQueSerial = videoDecodec_ ? videoDecodec_->getPktQueSerial() : nullptr;
+    const auto* audioPktQueSerial = audioDecodec_ ? audioDecodec_->getPktQueSerial() : nullptr;
+    clock_.initClock(videoPktQueSerial, audioPktQueSerial);
+
+    if (audioDecodec_) {
+        audioDecodec_->startDecode();
+    }
+    if (videoDecodec_) {
+        videoDecodec_->startDecode();
+    }
     demuxer_->startDemux();
-
-    uint32_t* videoPktQueSerial = videoDecodec_ ? videoDecodec_->getPktQueSerial() : nullptr;
-    uint32_t* audioPktQueSerial = audioDecodec_ ? audioDecodec_->getPktQueSerial() : nullptr;
-    FFINSTANCE()->initClock(videoPktQueSerial, audioPktQueSerial);
-
     start("monitor thread");
 
     return true;
 }
 
 void FFmpegPlayer::play() {
-    FFINSTANCE()->resumeMasterClock();
+    clock_.resumeClock();
 
     if (videoDecodec_) {
         videoDecodec_->setPause(false);
@@ -105,7 +109,7 @@ void FFmpegPlayer::play() {
 }
 
 void FFmpegPlayer::pause() {
-    FFINSTANCE()->pauseMasterClock();
+    clock_.pauseMasterClock();
 
     if (videoDecodec_) {
         videoDecodec_->setPause(true);
@@ -117,7 +121,11 @@ void FFmpegPlayer::pause() {
 }
 
 bool FFmpegPlayer::isPlaying() const {
-    return FFINSTANCE()->getMasterClockPause();
+    if (clock_.getMasterMode() == SyncType::VideoMaster) {
+        return !clock_.getVideoClockPause();
+    }
+
+    return !clock_.getAudioClockPause();
 }
 
 void FFmpegPlayer::stop() {
@@ -136,6 +144,8 @@ void FFmpegPlayer::stop() {
     demuxer_->exit();
     onPlaybackCompletedCallback_ = nullptr;
     exit();
+    clock_.initClock(nullptr, nullptr);
+    cachedTime_ = 0.0;
 }
 
 uint32_t FFmpegPlayer::getWidth() {
@@ -156,10 +166,9 @@ int64_t FFmpegPlayer::getDuration() const {
 
 // 确保返回值不是nan或者大于duration
 double FFmpegPlayer::getCurrentTime() {
-    static double cachedTime = 0;
-    double currentTime = FFINSTANCE()->getMasterClock();
+    double currentTime = clock_.getMasterClock();
     if (!isnan(currentTime)) {
-        cachedTime = currentTime;
+        cachedTime_ = currentTime;
     }
 
     const double duration = demuxer_->getDuration();
@@ -167,18 +176,18 @@ double FFmpegPlayer::getCurrentTime() {
         return duration;
     }
 
-    return std::min(cachedTime, duration);
+    return std::min(cachedTime_.load(), duration);
 }
 
 float FFmpegPlayer::getSpeed() {
-    return FFINSTANCE()->getSpeed();
+    return clock_.getSpeed();
 }
 
 void FFmpegPlayer::setSpeed(double speed) {
-    double pts = FFINSTANCE()->getAudioPTS();
-    FFINSTANCE()->setMasterClock(pts, CURRENT_TIME);
+    double pts = clock_.getAudioPTS();
+    clock_.setMasterClock(pts, CURRENT_TIME);
 
-    FFINSTANCE()->setSpeed(static_cast<float>(speed));
+    clock_.setSpeed(speed);
 
     if (audioDecodec_) {
         audioDecodec_->setSpeed(static_cast<float>(speed));
@@ -194,7 +203,7 @@ AudioFrame* FFmpegPlayer::getAudioFrame() {
 }
 
 void FFmpegPlayer::updateAudioClock(double pts, uint32_t serial) {
-    FFINSTANCE()->setAudioClock(pts, serial);
+    clock_.setAudioClock(pts, serial);
 }
 
 void FFmpegPlayer::setOnAudioSeekCallback(const OnSeekCallback& cb) {
@@ -214,11 +223,11 @@ void FFmpegPlayer::setOnPlaybackCompletedCallback(const OnPlaybackCompletedCallb
 }
 
 void FFmpegPlayer::setMasterMode(SyncType syncType) {
-    FFINSTANCE()->setSyncType(syncType);
+    clock_.setMasterMode(syncType);
 }
 
 SyncType FFmpegPlayer::getMasterMode() const {
-    return FFINSTANCE()->getSyncType();
+    return clock_.getMasterMode();
 }
 
 void FFmpegPlayer::handle(void* data) {
@@ -245,7 +254,9 @@ void FFmpegPlayer::handle(void* data) {
         return;
     }
 
-    av_packet_unref(pkt);
+    if (pkt != &demuxer_->getFlushPkt()) {
+        av_packet_unref(pkt);
+    }
 }
 
 void FFmpegPlayer::run(std::stop_token st) {
@@ -306,15 +317,15 @@ void FFmpegPlayer::markPlaybackCompleted() {
     }
 
     playbackCompleted_ = true;
-    FFINSTANCE()->pauseMasterClock();
+    clock_.pauseMasterClock();
 
     const double duration = demuxer_->getDuration();
-    const double currentTime = FFINSTANCE()->getMasterClock();
+    const double currentTime = clock_.getMasterClock();
     if (isnan(currentTime)) {
         return;
     }
     if (currentTime > duration) {
-        FFINSTANCE()->setMasterClock(duration, CURRENT_TIME);
+        clock_.setMasterClock(duration, CURRENT_TIME);
     }
 
     shutdown();
