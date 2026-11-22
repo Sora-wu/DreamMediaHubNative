@@ -50,7 +50,7 @@ void Decodec::reopen() {
     }
     frameQue_.reopen();
 
-    finishedSerial_ = 0;
+    finishedSerial_ = -1;
 }
 
 void Decodec::startDecode() {
@@ -123,7 +123,7 @@ bool Decodec::decode(AVFrame* frame) {
         std::lock_guard lock(mtx_);
         if (packet_->data == FFINSTANCE()->getFlushPkt()->data) {
             avcodec_flush_buffers(codecCtx_);
-            finishedSerial_ = 0;
+            finishedSerial_ = -1;
             if (onSeekCallback_) {
                 onSeekCallback_(decodecSerial_);
             }

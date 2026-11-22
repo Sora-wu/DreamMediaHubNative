@@ -79,7 +79,7 @@ protected:
     AVPacket* packet_ = nullptr;
     int streamIndex_ = -1;
     uint32_t decodecSerial_ = 0;
-    uint32_t finishedSerial_ = 0;
+    int finishedSerial_ = -1;
     double decodecTimer_ = 0;
     bool decodeTimerValid_ = false;
 

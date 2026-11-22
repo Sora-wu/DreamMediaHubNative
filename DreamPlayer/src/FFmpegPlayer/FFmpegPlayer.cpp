@@ -284,11 +284,11 @@ bool FFmpegPlayer::checkPlaybackCompleted() {
 
     // 播放完毕把对应的流关闭，避免后面继续解码
     bool isVideoStreamDrained = isStreamDrained(videoDecodec_.get());
-    if (isVideoStreamDrained) {
+    if (isVideoStreamDrained && videoDecodec_) {
         videoDecodec_->shutdown();
     }
     bool isAudioStreamDrained = isStreamDrained(audioDecodec_.get());
-    if (isAudioStreamDrained) {
+    if (isAudioStreamDrained && audioDecodec_) {
         audioDecodec_->shutdown();
     }
 

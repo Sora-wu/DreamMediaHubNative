@@ -8,7 +8,6 @@
 #include <DreamPlayer/structs.h>
 
 #include <algorithm>
-#include <cmath>
 
 using namespace Dream;
 
@@ -226,8 +225,17 @@ bool VideoDecodec::fillData(AVFrame* frame) {
 
     videoFrame_.picWidthHeightRatio = frame->sample_aspect_ratio.den == 0 ? 0 : av_q2d(frame->sample_aspect_ratio);
 
+    int outLinesize[4]{};
+    if (av_image_fill_linesizes(outLinesize, PIXEL_FORMAT, width) < 0) {
+        av_log(nullptr, AV_LOG_ERROR, "Cannot fill linesize\n");
+        return false;
+    }
+    updateVideoFrameSize(width, height, outLinesize);
+
+    // 如果不是PIXEL_FORMAT的AVFrame都需要转换
     if (frame->format != PIXEL_FORMAT || frame->width != cachedWidth_ || frame->height != cachedHeight_) {
-        if (frame->format != cachedFormat_) {
+        // 没有命中缓存的统一更新swsCtx_
+        if (frame->format != cachedFormat_ || frame->width != cachedWidth_ || frame->height != cachedHeight_) {
             swsCtx_ = sws_getCachedContext(swsCtx_,
                 width, height, (AVPixelFormat)frame->format,
                 width, height, PIXEL_FORMAT,
@@ -241,35 +249,49 @@ bool VideoDecodec::fillData(AVFrame* frame) {
             cachedHeight_ = frame->height;
         }
 
-        int outLinesize[4]{};
-        if (av_image_fill_linesizes(outLinesize, PIXEL_FORMAT, width) < 0) {
-            av_log(nullptr, AV_LOG_ERROR, "Cannot fill linesize\n");
-            return false;
-        }
-        updateVideoFrameSize(outLinesize);
-        sws_scale(swsCtx_, frame->data, frame->linesize, 0, height, (uint8_t* const*)videoFrame_.data, videoFrame_.stride);
+        sws_scale(swsCtx_, frame->data, frame->linesize, 0, height,
+            reinterpret_cast<uint8_t* const*>(videoFrame_.data), videoFrame_.stride);
     }
     else {
-        updateVideoFrameSize(frame->linesize);
-        const int planeHeights[3] = { height, height / 2, height / 2 };
+        const int halfHeight = (height + 1) / 2;            // 当遇到奇数高度时，需要向上取整
+        const int rows[3] = { height, halfHeight, halfHeight };
         for (uint32_t i = 0; i < 3; ++i) {
-            const int stride = frame->linesize[i];
-            const int planeHeight = planeHeights[i];
-            for (int row = 0; row < planeHeight; ++row) {
-                memcpy(videoFrame_.data[i] + row * stride, frame->data[i] + row * stride, stride);
+            const int rowBytes = outLinesize[i];
+            const int srcStride = frame->linesize[i];
+            const int dstStride = videoFrame_.stride[i];
+
+            if (!frame->data[i] || !videoFrame_.data[i] || std::abs(srcStride) < rowBytes || dstStride < rowBytes) {
+                return false;
             }
+
+            av_image_copy_plane(reinterpret_cast<uint8_t*>(videoFrame_.data[i]), dstStride,
+                frame->data[i], srcStride,
+                rowBytes, rows[i]);
         }
     }
 
     return true;
 }
 
-void VideoDecodec::updateVideoFrameSize(const int linesize[4]) {
-    const int halfHeight = static_cast<int>(ceil(cachedHeight_ / 2.0));
-    const int planeHeights[3] = { cachedHeight_, halfHeight, halfHeight };
-    if (cachedWidth_ != videoFrame_.frameWidth || cachedHeight_ != videoFrame_.frameHeight) {
-        videoFrame_.frameWidth = cachedWidth_;
-        videoFrame_.frameHeight = cachedHeight_;
+void VideoDecodec::updateVideoFrameSize(const int width, const int height, const int linesize[4]) {
+    bool needsUpdate = false;
+    if (width != videoFrame_.frameWidth || height != videoFrame_.frameHeight) {
+        // 输入的宽高不一致
+        needsUpdate = true;
+    }
+
+    const int halfHeight = (height + 1) / 2;
+    const int planeHeights[3] = { height, halfHeight, halfHeight };
+    for (uint32_t i = 0; i < 3; ++i) {
+        if (linesize[i] != videoFrame_.stride[i]) {
+            needsUpdate = true;
+            break;
+        }
+    }
+
+    if (needsUpdate) {
+        videoFrame_.frameWidth = width;
+        videoFrame_.frameHeight = height;
 
         for (uint32_t i = 0; i < 3; ++i) {
             if (videoFrame_.data[i]) {

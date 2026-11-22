@@ -38,7 +38,7 @@ private:
     double getFrameDuration(const Frame& frame, const Frame& nextFrame) const;
     double calcDelay(double duration) const;
     bool fillData(AVFrame* frame);
-    void updateVideoFrameSize(const int linesize[4]);
+    void updateVideoFrameSize(int width, int height, const int linesize[4]);
 
 private:
     SwsContext* swsCtx_ = nullptr;
