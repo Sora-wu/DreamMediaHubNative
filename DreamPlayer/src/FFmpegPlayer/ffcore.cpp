@@ -22,3 +22,10 @@ bool FFUtils::isEqual(float a, float b) {
 bool FFUtils::isEqual(double a, double b) {
     return fabs(a - b) < 1e-6;
 }
+
+void FFUtils::setThreadName(std::jthread &thread, const std::string &name) {
+#ifdef PLATFORM_LINUX
+    auto threadHandle = thread.native_handle();
+    pthread_setname_np(threadHandle, name.c_str());
+#endif
+}

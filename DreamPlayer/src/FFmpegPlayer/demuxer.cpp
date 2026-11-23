@@ -54,10 +54,13 @@ bool Demuxer::open(const char* url) {
 }
 
 void Demuxer::startDemux() {
-    start("demux thread");
+    thread_ = std::jthread([this](std::stop_token st) {
+        threadFunc(st);
+    });
+    FFUtils::setThreadName(thread_, "Demuxer thread");
 }
 
-void Demuxer::run(std::stop_token st) {
+void Demuxer::threadFunc(std::stop_token st) {
     AVPacket pkt{};
     int res = 0;
 
@@ -94,6 +97,13 @@ void Demuxer::run(std::stop_token st) {
     }
 
     av_log(nullptr, AV_LOG_INFO, "Demuxer exit\n");
+}
+
+void Demuxer::stopDemux() {
+    thread_.request_stop();
+    if (thread_.joinable()) {
+        thread_.join();
+    }
 }
 
 void Demuxer::seekRequest(double targetPos, double seekRel) {

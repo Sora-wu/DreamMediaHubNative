@@ -7,16 +7,17 @@
 
 #include <DreamPlayer/DreamPlayer.h>
 #include <common/dataHandler.hpp>
-#include <common/dreamThread.hpp>
 #include <FFmpegPlayer/mediaClock.h>
 
 #include <memory>
+#include <thread>
+#include <mutex>
 
 class Demuxer;
 class VideoDecodec;
 class AudioDecodec;
 
-class FFmpegPlayer final : public Dream::DreamPlayer, public DataHandler, private DreamThread {
+class FFmpegPlayer final : public Dream::DreamPlayer, public DataHandler {
 public:
     FFmpegPlayer();
     ~FFmpegPlayer() override;
@@ -54,7 +55,7 @@ public:
     void handle(void* data) override;
 private:
     // 检测线程
-    void run(std::stop_token st) override;
+    void threadFunc(std::stop_token st);
 
     void shutdown() const;
     // 仅检测线程
@@ -62,9 +63,12 @@ private:
     void markPlaybackCompleted();
 
 private:
+    std::jthread thread_;
+    std::mutex mtx_;
+
     MediaClock clock_;
     std::atomic<double> cachedTime_{0.0};
-    bool playbackCompleted_ = false;
+    std::atomic<bool> playbackCompleted_ = false;
 
     Dream::OnPlaybackCompletedCallback onPlaybackCompletedCallback_ = nullptr;
 

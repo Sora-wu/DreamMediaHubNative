@@ -21,16 +21,15 @@ public:
 
     bool openCodec(int streamIndex, AVStream* stream, AVFormatContext& input);
     void reopen() override;
-    void startDecode() override;
+    void start() override;
 
     uint32_t getWidth() const;
     uint32_t getHeight() const;
 
-    void run(std::stop_token st) override;
-
     Dream::VideoFrame* getVideoFrame();
 
 protected:
+    void threadFunc(std::stop_token st) override;
     void cleanup() override;
 
 private:

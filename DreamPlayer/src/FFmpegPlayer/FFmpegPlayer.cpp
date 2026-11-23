@@ -11,6 +11,7 @@
 
 #include <algorithm>
 
+using namespace std::literals;
 using namespace Dream;
 
 namespace {
@@ -32,10 +33,11 @@ FFmpegPlayer::FFmpegPlayer() {
 
 FFmpegPlayer::~FFmpegPlayer() {
     stop();
+
+    avformat_network_deinit();
 }
 
 bool FFmpegPlayer::open(const char* url) {
-    shutdown();
     cachedTime_ = 0.0;
 
     if (!demuxer_->open(url)) {
@@ -56,8 +58,6 @@ bool FFmpegPlayer::open(const char* url) {
             }
         }
     }
-
-    exit();
 
     if (audioDecodec_->isOpen()) {
         audioDecodec_->reopen();
@@ -85,13 +85,17 @@ bool FFmpegPlayer::open(const char* url) {
     clock_.initClock(videoPktQueSerial, audioPktQueSerial);
 
     if (audioDecodec_) {
-        audioDecodec_->startDecode();
+        audioDecodec_->start();
     }
     if (videoDecodec_) {
-        videoDecodec_->startDecode();
+        videoDecodec_->start();
     }
     demuxer_->startDemux();
-    start("monitor thread");
+
+    thread_ = std::jthread([this](std::stop_token st) {
+        threadFunc(st);
+    });
+    FFUtils::setThreadName(thread_, "monitor thread");
 
     return true;
 }
@@ -132,18 +136,23 @@ void FFmpegPlayer::stop() {
     if (audioDecodec_) {
         audioDecodec_->setOnSeekCallback(nullptr);
         audioDecodec_->shutdown();
-        audioDecodec_->exit();
+        audioDecodec_->stop();
     }
 
     if (videoDecodec_) {
         videoDecodec_->setOnSeekCallback(nullptr);
         videoDecodec_->shutdown();
-        videoDecodec_->exit();
+        videoDecodec_->stop();
     }
 
-    demuxer_->exit();
+    demuxer_->stopDemux();
+
     onPlaybackCompletedCallback_ = nullptr;
-    exit();
+    thread_.request_stop();
+    if (thread_.joinable()) {
+        thread_.join();
+    }
+
     clock_.initClock(nullptr, nullptr);
     cachedTime_ = 0.0;
 }
@@ -219,6 +228,7 @@ void FFmpegPlayer::setOnVideoSeekCallback(const OnSeekCallback& cb) {
 }
 
 void FFmpegPlayer::setOnPlaybackCompletedCallback(const OnPlaybackCompletedCallback& cb) {
+    std::lock_guard lock(mtx_);
     onPlaybackCompletedCallback_ = cb;
 }
 
@@ -232,18 +242,6 @@ SyncType FFmpegPlayer::getMasterMode() const {
 
 void FFmpegPlayer::handle(void* data) {
     AVPacket* pkt = static_cast<AVPacket*>(data);
-
-    if (playbackCompleted_) {
-        if (videoDecodec_) {
-            videoDecodec_->reopen();
-        }
-
-        if (audioDecodec_) {
-            audioDecodec_->reopen();
-        }
-
-        playbackCompleted_ = false;
-    }
 
     if (videoDecodec_ && pkt->stream_index == videoDecodec_->getStreamIndex()) {
         videoDecodec_->handle(pkt);
@@ -259,10 +257,10 @@ void FFmpegPlayer::handle(void* data) {
     }
 }
 
-void FFmpegPlayer::run(std::stop_token st) {
+void FFmpegPlayer::threadFunc(std::stop_token st) {
     while (!st.stop_requested()) {
         checkPlaybackCompleted();
-        msleep(100);
+        std::this_thread::sleep_for(100ms);
     }
 }
 
@@ -277,10 +275,6 @@ void FFmpegPlayer::shutdown() const {
 }
 
 bool FFmpegPlayer::checkPlaybackCompleted() {
-    if (playbackCompleted_) {
-        return true;
-    }
-
     if (!demuxer_->isEof()) {
         return false;
     }
@@ -304,6 +298,18 @@ bool FFmpegPlayer::checkPlaybackCompleted() {
     }
 
     if (!isVideoStreamDrained || !isAudioStreamDrained) {
+        if (playbackCompleted_) {
+            // 被重新打开，比如seek
+            if (videoDecodec_) {
+                videoDecodec_->reopen();
+            }
+            if (audioDecodec_) {
+                audioDecodec_->reopen();
+            }
+
+            playbackCompleted_ = false;
+        }
+
         return false;
     }
 
@@ -332,6 +338,7 @@ void FFmpegPlayer::markPlaybackCompleted() {
     av_log(nullptr, AV_LOG_INFO, "current media player completed\n");
     setSpeed(1.0f);     // 当前媒体播放完毕之后重置速度
 
+    std::lock_guard lock(mtx_);
     if (onPlaybackCompletedCallback_) {
         onPlaybackCompletedCallback_();
     }

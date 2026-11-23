@@ -52,8 +52,10 @@ void Decodec::reopen() {
     finishedSerial_ = -1;
 }
 
-void Decodec::startDecode() {
-    start();
+void Decodec::start() {
+    thread_ = std::jthread([this](std::stop_token st) {
+        threadFunc(st);
+    });
 }
 
 void Decodec::handle(void* data) {
@@ -65,7 +67,15 @@ void Decodec::shutdown() {
     frameQue_.close();
 }
 
-void Decodec::cleanup() {
+void Decodec::stop() {
+    thread_.request_stop();
+    if (thread_.joinable()) {
+        thread_.join();
+    }
+}
+
+void Decodec::cleanup()
+{
     std::lock_guard lock(mtx_);
 
     if (codecCtx_) {
@@ -82,7 +92,6 @@ void Decodec::cleanup() {
     streamIndex_ = -1;
     isPause_ = true;
 }
-
 
 bool Decodec::decode(AVFrame* frame) {
     // 先Frame后Packet，两个操作错开，避免更多的AVERROR(EAGAIN)
@@ -119,9 +128,10 @@ bool Decodec::decode(AVFrame* frame) {
             }
         } while (*pktQue_.getSerial() != decodecSerial_);
 
-        std::lock_guard lock(mtx_);
         if (packet_->data == flushPkt_.data) {
             avcodec_flush_buffers(codecCtx_);
+            
+            std::lock_guard lock(mtx_);
             finishedSerial_ = -1;
             if (onSeekCallback_) {
                 onSeekCallback_(decodecSerial_);

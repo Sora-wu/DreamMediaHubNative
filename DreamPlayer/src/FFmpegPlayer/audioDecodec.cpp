@@ -72,7 +72,7 @@ bool AudioDecodec::openCodec(int streamIndex, AVStream* stream) {
     return true;
 }
 
-void AudioDecodec::run(std::stop_token st) {
+void AudioDecodec::threadFunc(std::stop_token st) {
     AVFrame* frame = av_frame_alloc();
     if (!frame) {
         av_log(nullptr, AV_LOG_FATAL, "Could not allocate audio frame");
@@ -107,8 +107,9 @@ void AudioDecodec::reopen() {
     Decodec::reopen();
 }
 
-void AudioDecodec::startDecode() {
-    start("audio thread");
+void AudioDecodec::start() {
+    Decodec::start();
+    FFUtils::setThreadName(thread_, "audio thread");
 }
 
 AudioFrame* AudioDecodec::getAudioFrame() {

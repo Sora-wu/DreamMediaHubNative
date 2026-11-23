@@ -50,8 +50,9 @@ void VideoDecodec::reopen() {
     Decodec::reopen();
 }
 
-void VideoDecodec::startDecode() {
-    start("video thread");
+void VideoDecodec::start() {
+    Decodec::start();
+    FFUtils::setThreadName(thread_, "video thread");
 }
 
 uint32_t VideoDecodec::getWidth() const {
@@ -60,36 +61,6 @@ uint32_t VideoDecodec::getWidth() const {
 
 uint32_t VideoDecodec::getHeight() const {
     return codecCtx_ ? codecCtx_->height : 0;
-}
-
-void VideoDecodec::run(std::stop_token st) {
-    AVFrame* frame = av_frame_alloc();
-    if (!frame) {
-        av_log(nullptr, AV_LOG_FATAL, "Could not allocate video frame");
-        return;
-    }
-
-    AVRational timeBase = stream_->time_base;
-    AVRational frameRate = av_guess_frame_rate(input_, stream_, nullptr);
-    double duration{};
-    double pts{};
-
-    while (!st.stop_requested()) {
-        if (!decode(frame)) {
-            if (st.stop_requested()) {
-                break;
-            }
-            continue;
-        }
-
-        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(input_, stream_, frame);
-        duration = av_q2d(frameRate) > 0 ? av_q2d(av_inv_q(frameRate)) : 0.0;
-        pts = frame->pts == AV_NOPTS_VALUE ? NAN : frame->pts * av_q2d(timeBase);
-        pushFrame(frame, pts, duration);
-    }
-
-    av_frame_free(&frame);
-    av_log(nullptr, AV_LOG_INFO, "Finished decoding video stream\n");
 }
 
 void VideoDecodec::resetSyncState() {
@@ -166,6 +137,36 @@ void VideoDecodec::cleanup() {
     Decodec::cleanup();
 
     sws_freeContext(swsCtx_);
+}
+
+void VideoDecodec::threadFunc(std::stop_token st) {
+    AVFrame* frame = av_frame_alloc();
+    if (!frame) {
+        av_log(nullptr, AV_LOG_FATAL, "Could not allocate video frame");
+        return;
+    }
+
+    AVRational timeBase = stream_->time_base;
+    AVRational frameRate = av_guess_frame_rate(input_, stream_, nullptr);
+    double duration{};
+    double pts{};
+
+    while (!st.stop_requested()) {
+        if (!decode(frame)) {
+            if (st.stop_requested()) {
+                break;
+            }
+            continue;
+        }
+
+        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(input_, stream_, frame);
+        duration = av_q2d(frameRate) > 0 ? av_q2d(av_inv_q(frameRate)) : 0.0;
+        pts = frame->pts == AV_NOPTS_VALUE ? NAN : frame->pts * av_q2d(timeBase);
+        pushFrame(frame, pts, duration);
+    }
+
+    av_frame_free(&frame);
+    av_log(nullptr, AV_LOG_INFO, "Finished decoding video stream\n");
 }
 
 double VideoDecodec::getFrameDuration(const Frame& frame, const Frame& nextFrame) const {

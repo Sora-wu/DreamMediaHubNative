@@ -6,13 +6,11 @@
 #pragma once
 
 #include <common/dataHandler.hpp>
-#include <common/dreamThread.hpp>
 #include <FFmpegPlayer/packetQueue.h>
-#include <FFmpegPlayer/ffcore.h>
 #include <DreamPlayer/structs.h>
 
 #include <mutex>
-#include <cassert>
+#include <thread>
 
 struct Frame {
     AVFrame* frame{};
@@ -21,7 +19,7 @@ struct Frame {
     double duration{};
 };
 
-class Decodec : public DataHandler, public DreamThread {
+class Decodec : public DataHandler {
 public:
     explicit Decodec(const AVPacket& flushPkt, std::size_t frameQueueSize) : flushPkt_(flushPkt), frameQue_(frameQueueSize) {}
     ~Decodec() override {
@@ -30,7 +28,8 @@ public:
 
     virtual bool openCodec(int streamIndex, AVStream* stream);
     virtual void reopen();
-    virtual void startDecode();
+    virtual void start();
+    virtual void stop();
 
     [[nodiscard]] bool isOpen() const {
         return streamIndex_ != -1;
@@ -59,10 +58,13 @@ public:
     }
 
     void setOnSeekCallback(const Dream::OnSeekCallback& cb) {
+        std::lock_guard lock(mtx_);
         onSeekCallback_ = cb;
     }
 
 protected:
+    virtual void threadFunc(std::stop_token st) = 0;
+
     virtual void cleanup();
     [[nodiscard]] virtual bool decode(AVFrame* frame);
     void pushFrame(AVFrame* frame, double pts, double duration);
@@ -70,6 +72,8 @@ protected:
     static void releaseFrame(Frame& frame);
 
 protected:
+    std::jthread thread_;
+
     const AVPacket& flushPkt_;
     PacketQueue pktQue_{flushPkt_};
     ConcurrentQueue<Frame> frameQue_;
@@ -80,7 +84,7 @@ protected:
     AVPacket* packet_ = nullptr;
     int streamIndex_ = -1;
     uint32_t decodecSerial_ = 0;
-    int finishedSerial_ = -1;
+    std::atomic<int> finishedSerial_ = -1;
     double decodecTimer_ = 0;
     bool decodeTimerValid_ = false;
 

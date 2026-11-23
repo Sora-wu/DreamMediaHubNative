@@ -6,6 +6,7 @@
 #pragma once
 
 #include <string>
+#include <thread>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -25,4 +26,6 @@ public:
     static std::string getError(int errnum);
     static bool isEqual(float a, float b);
     static bool isEqual(double a, double b);
+
+    static void setThreadName(std::jthread& thread, const std::string& name);
 };

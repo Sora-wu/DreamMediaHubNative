@@ -28,15 +28,15 @@ public:
     ~AudioDecodec() override;
 
     bool openCodec(int streamIndex, AVStream* stream) override;
-    void run(std::stop_token st) override;
     void reopen() override;
-    void startDecode() override;
+    void start() override;
 
     Dream::AudioFrame* getAudioFrame();
 
     void setSpeed(float speed);
 
 protected:
+    void threadFunc(std::stop_token st) override;
     void cleanup() override;
 
 private:

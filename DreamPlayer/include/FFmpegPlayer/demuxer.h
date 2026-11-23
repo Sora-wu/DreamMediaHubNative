@@ -6,7 +6,6 @@
 #pragma once
 
 #include <common/dataHandler.hpp>
-#include <common/dreamThread.hpp>
 #include <FFmpegPlayer/mediaClock.h>
 #include <FFmpegPlayer/ffcore.h>
 
@@ -18,7 +17,7 @@ extern "C" {
     struct AVStream;
 }
 
-class Demuxer : public DataHandler, public DreamThread {
+class Demuxer : public DataHandler {
 public:
     explicit Demuxer(MediaClock& mediaClock);
     ~Demuxer() override;
@@ -43,7 +42,8 @@ public:
     }
 
     void startDemux();
-    void run(std::stop_token st) override;
+    void threadFunc(std::stop_token st);
+    void stopDemux();
 
     void seekRequest(double targetPos, double seekRel);
 
@@ -52,6 +52,8 @@ private:
     void pushNullPacket();
 
 private:
+    std::jthread thread_;
+
     AVFormatContext* fmtCtx_ = nullptr;
     int64_t duration_ = AV_NOPTS_VALUE;
 
