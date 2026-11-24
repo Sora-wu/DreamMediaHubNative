@@ -57,6 +57,10 @@ public:
         isPause_ = isPause;
     }
 
+    [[nodiscard]] Dream::OnSeekCallback& getOnSeekCallback() {
+        std::lock_guard lock(mtx_);
+        return onSeekCallback_;
+    }
     void setOnSeekCallback(const Dream::OnSeekCallback& cb) {
         std::lock_guard lock(mtx_);
         onSeekCallback_ = cb;

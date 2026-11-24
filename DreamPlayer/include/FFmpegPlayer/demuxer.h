@@ -58,7 +58,7 @@ private:
     int64_t duration_ = AV_NOPTS_VALUE;
 
     std::vector<AVStream*> streams_;
-    bool isEof_ = false;
+    std::atomic<bool> isEof_ = false;
 
     AVPacket flushPkt_{};
 

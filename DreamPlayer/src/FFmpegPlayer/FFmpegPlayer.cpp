@@ -133,25 +133,28 @@ bool FFmpegPlayer::isPlaying() const {
 }
 
 void FFmpegPlayer::stop() {
+    thread_.request_stop();
+    shutdown();
+    if (thread_.joinable()) {
+        thread_.join();
+    }
+
+    // 监控线程可能在退出前重开过队列。它退出后再确保队列已关闭。
+    shutdown();
+
     if (audioDecodec_) {
-        audioDecodec_->setOnSeekCallback(nullptr);
-        audioDecodec_->shutdown();
         audioDecodec_->stop();
+        audioDecodec_->setOnSeekCallback(nullptr);
     }
 
     if (videoDecodec_) {
-        videoDecodec_->setOnSeekCallback(nullptr);
-        videoDecodec_->shutdown();
         videoDecodec_->stop();
+        videoDecodec_->setOnSeekCallback(nullptr);
     }
 
     demuxer_->stopDemux();
 
-    onPlaybackCompletedCallback_ = nullptr;
-    thread_.request_stop();
-    if (thread_.joinable()) {
-        thread_.join();
-    }
+    setOnPlaybackCompletedCallback(nullptr);
 
     clock_.initClock(nullptr, nullptr);
     cachedTime_ = 0.0;
@@ -215,16 +218,30 @@ void FFmpegPlayer::updateAudioClock(double pts, uint32_t serial) {
     clock_.setAudioClock(pts, serial);
 }
 
-void FFmpegPlayer::setOnAudioSeekCallback(const OnSeekCallback& cb) {
-    if (audioDecodec_) {
-        audioDecodec_->setOnSeekCallback(cb);
-    }
-}
-
-void FFmpegPlayer::setOnVideoSeekCallback(const OnSeekCallback& cb) {
+void FFmpegPlayer::setOnSeekCallback(const OnSeekCallback& cb) {
+    // 先清理回掉，后面再设置
     if (videoDecodec_) {
-        videoDecodec_->setOnSeekCallback(cb);
+        videoDecodec_->setOnSeekCallback(nullptr);
     }
+    if (audioDecodec_) {
+        audioDecodec_->setOnSeekCallback(nullptr);
+    }
+
+    if (!cb) {
+        return;
+    }
+
+    const SyncType masterMode = clock_.getMasterMode();
+    if (masterMode == SyncType::VideoMaster && videoDecodec_) {
+        videoDecodec_->setOnSeekCallback(cb);
+        return;
+    }
+    else if (masterMode == SyncType::AudioMaster && audioDecodec_) {
+        audioDecodec_->setOnSeekCallback(cb);
+        return;
+    }
+
+    av_log(nullptr, AV_LOG_WARNING, "setOnSeekCallback failed, no available master track\n");
 }
 
 void FFmpegPlayer::setOnPlaybackCompletedCallback(const OnPlaybackCompletedCallback& cb) {
@@ -233,6 +250,20 @@ void FFmpegPlayer::setOnPlaybackCompletedCallback(const OnPlaybackCompletedCallb
 }
 
 void FFmpegPlayer::setMasterMode(SyncType syncType) {
+    const SyncType currentMode = clock_.getMasterMode();
+    if (currentMode == syncType) {
+        return;
+    }
+
+    OnSeekCallback cb = nullptr;
+    if (currentMode == SyncType::VideoMaster && videoDecodec_) {
+        cb = videoDecodec_->getOnSeekCallback();
+    }
+    else if (currentMode == SyncType::AudioMaster && audioDecodec_) {
+        cb = audioDecodec_->getOnSeekCallback();
+    }
+
+    setOnSeekCallback(cb);
     clock_.setMasterMode(syncType);
 }
 

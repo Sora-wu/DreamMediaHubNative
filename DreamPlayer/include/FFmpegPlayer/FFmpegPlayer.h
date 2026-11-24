@@ -43,9 +43,7 @@ public:
 
     void updateAudioClock(double pts, uint32_t serial) override;
 
-    void setOnAudioSeekCallback(const Dream::OnSeekCallback& cb) override;
-    void setOnVideoSeekCallback(const Dream::OnSeekCallback& cb) override;
-
+    void setOnSeekCallback(const Dream::OnSeekCallback& cb) override;
     void setOnPlaybackCompletedCallback(const Dream::OnPlaybackCompletedCallback& cb) override;
 
     void setMasterMode(Dream::SyncType syncType) override;
@@ -54,7 +52,7 @@ public:
     // 处理来自解封装器的数据
     void handle(void* data) override;
 private:
-    // 检测线程
+    // 检测线程 TODO: 看看后续是否能够去掉
     void threadFunc(std::stop_token st);
 
     void shutdown() const;

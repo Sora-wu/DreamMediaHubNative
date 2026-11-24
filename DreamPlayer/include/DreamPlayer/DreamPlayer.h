@@ -44,10 +44,7 @@ namespace Dream {
 
         // 当有seek操作时，会调用回调
         // 由于native只负责解码出帧，清空外部缓存需要注册于此（比如外部音频缓存）
-        virtual void setOnAudioSeekCallback(const OnSeekCallback& cb) = 0;
-        // 由于native只负责解码出帧，清空外部缓存需要注册于此
-        virtual void setOnVideoSeekCallback(const OnSeekCallback& cb) = 0;
-
+        virtual void setOnSeekCallback(const OnSeekCallback& cb) = 0;
         virtual void setOnPlaybackCompletedCallback(const OnPlaybackCompletedCallback& cb) = 0;
 
         virtual void setMasterMode(SyncType syncType) = 0;
