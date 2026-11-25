@@ -6,7 +6,6 @@
 #include <FFmpegPlayer/demuxer.h>
 #include <FFmpegPlayer/ffcore.h>
 
-#include <mutex>
 #include <chrono>
 
 using namespace::std::literals;
@@ -65,12 +64,9 @@ void Demuxer::threadFunc(std::stop_token st) {
     int res = 0;
 
     while (!st.stop_requested()) {
-        {
-            std::lock_guard lock(mtx_);
-            if (hasSeekRequest_) {
-                seek();
-                hasSeekRequest_ = false;
-                continue;
+        while (!taskQueue_.empty()) {
+            if (auto task = taskQueue_.try_pop()) {
+                (*task)(*this);
             }
         }
 
@@ -84,8 +80,7 @@ void Demuxer::threadFunc(std::stop_token st) {
                 break;
             }
 
-            std::unique_lock lock(mtx_);
-            cvRead_.wait_for(lock, 10ms);
+            std::this_thread::sleep_for(10ms);
             continue;
         }
         else {
@@ -106,42 +101,42 @@ void Demuxer::stopDemux() {
     }
 }
 
-void Demuxer::seekRequest(double targetPos, double seekRel) {
-    std::lock_guard lock(mtx_);
+void Demuxer::seek(double targetPos, double seekRel) {
+    taskQueue_.try_push([this, targetPos, seekRel](Demuxer& self) {
+        (void)self;
 
-    seekTargetPos_ = targetPos;
-    seekRel_ = seekRel;
-    hasSeekRequest_ = true;
+        int64_t pts = static_cast<int64_t>(targetPos * AV_TIME_BASE);
+        int64_t offsetPts = static_cast<int64_t>(seekRel * AV_TIME_BASE);
+        if (fmtCtx_->start_time != AV_NOPTS_VALUE) {
+            pts += fmtCtx_->start_time;
+        }
+
+        const int64_t seekMin = seekRel > 0 ? pts - offsetPts + 2 : INT64_MIN;
+        const int64_t seekMax = seekRel < 0 ? pts - offsetPts - 2 : INT64_MAX;
+        int res = avformat_seek_file(fmtCtx_, -1, seekMin, pts, seekMax, 0);
+        if (res < 0) {
+            av_log(nullptr, AV_LOG_ERROR, "Seek failed\n");
+        }
+        else {
+            // seek之后需要flush
+            for (auto stream : streams_) {
+                flushPkt_.stream_index = stream->index;
+                handle(&flushPkt_);
+            }
+
+            av_log(nullptr, AV_LOG_INFO, "demuxer seek to %f\n", targetPos);
+            mediaClock_.resumeClock();
+            // seek成功更新时钟
+            mediaClock_.setAudioClock(targetPos, CURRENT_TIME);
+            mediaClock_.setVideoClock(targetPos, CURRENT_TIME);
+
+            isEof_ = false;
+        }
+    });
 }
 
 void Demuxer::seek() {
-    int64_t pts = (int64_t)(seekTargetPos_ * AV_TIME_BASE);
-    int64_t offsetPts = (int64_t)(seekRel_ * AV_TIME_BASE);
-    if (fmtCtx_->start_time != AV_NOPTS_VALUE) {
-        pts += fmtCtx_->start_time;
-    }
 
-    const int64_t seekMin = seekRel_ > 0 ? pts - offsetPts + 2 : INT64_MIN;
-    const int64_t seekMax = seekRel_ < 0 ? pts - offsetPts - 2 : INT64_MAX;
-    int res = avformat_seek_file(fmtCtx_, -1, seekMin, pts, seekMax, 0);
-    if (res < 0) {
-        av_log(nullptr, AV_LOG_ERROR, "Seek failed\n");
-    }
-    else {
-        // seek之后需要flush
-        for (auto stream : streams_) {
-            flushPkt_.stream_index = stream->index;
-            handle(&flushPkt_);
-        }
-
-        av_log(nullptr, AV_LOG_INFO, "demuxer seek to %f\n", seekTargetPos_);
-        mediaClock_.resumeClock();
-        // seek成功更新时钟
-        mediaClock_.setAudioClock(seekTargetPos_, CURRENT_TIME);
-        mediaClock_.setVideoClock(seekTargetPos_, CURRENT_TIME);
-
-        isEof_ = false;
-    }
 }
 
 void Demuxer::pushNullPacket() {

@@ -81,11 +81,14 @@ void AudioDecodec::threadFunc(std::stop_token st) {
 
     double pts{};
     while (!st.stop_requested()) {
-        {
-            std::lock_guard lock(mtx_);
-            pushFrames(paddingFrames_, decodecTimer_);
-            paddingFrames_.clear();
+        while (!taskQueue_.empty()) {
+            if (auto task = taskQueue_.try_pop()) {
+                (*task)(*this);
+            }
         }
+
+        pushFrames(paddingFrames_, decodecTimer_);
+        paddingFrames_.clear();
 
         if (!decode(frame)) {
             if (st.stop_requested()) {
@@ -95,7 +98,7 @@ void AudioDecodec::threadFunc(std::stop_token st) {
         }
 
         std::vector<AVFrame*> frames = processFrame(frame);
-        pts = (double)frame->pts / frame->sample_rate;
+        pts = static_cast<double>(frame->pts) / frame->sample_rate;
         pushFrames(frames, pts);
     }
 
@@ -138,29 +141,30 @@ AudioFrame* AudioDecodec::getAudioFrame() {
 }
 
 void AudioDecodec::setSpeed(float speed) {
-    if (!FFUtils::isEqual(speed, speed_)) {
-        std::lock_guard lock(mtx_);
-        speed_ = speed;
+    taskQueue_.try_push([this, speed](AudioDecodec&) {
+        if (!FFUtils::isEqual(speed, speed_)) {
+            speed_ = speed;
 
-        // flush
-        audioSpeedFilter_->addFrame(nullptr);
-        while (true) {
-            AVFrame* out = framePool_.get();
-            int res = audioSpeedFilter_->getFrame(out);
-            if (res == AVERROR(EAGAIN) || res == AVERROR_EOF) {
-                break;
-            }
-            if (res < 0) {
-                av_log(nullptr, AV_LOG_ERROR, "Error occurred during filtering\n");
-                break;
+            // flush
+            audioSpeedFilter_->addFrame(nullptr);
+            while (true) {
+                AVFrame* out = framePool_.get();
+                int res = audioSpeedFilter_->getFrame(out);
+                if (res == AVERROR(EAGAIN) || res == AVERROR_EOF) {
+                    break;
+                }
+                if (res < 0) {
+                    av_log(nullptr, AV_LOG_ERROR, "Error occurred during filtering\n");
+                    break;
+                }
+
+                paddingFrames_.push_back(out);
             }
 
-            paddingFrames_.push_back(out);
+            audioSpeedFilter_ = std::make_unique<AudioSpeedFilter>();
+            audioSpeedFilter_->initFilter(speed_, SAMPLE_RATE, SAMPLE_FORMAT, CHANNEL_LAYOUT);
         }
-
-        audioSpeedFilter_ = std::make_unique<AudioSpeedFilter>();
-        audioSpeedFilter_->initFilter(speed_, SAMPLE_RATE, SAMPLE_FORMAT, CHANNEL_LAYOUT);
-    }
+    });
 }
 
 void AudioDecodec::cleanup() {
@@ -275,7 +279,6 @@ bool AudioDecodec::adjustSamples(AVFrame* frame) {
 std::vector<AVFrame*> AudioDecodec::processFrame(AVFrame* frame) {
     std::vector<AVFrame*> frames;
 
-    std::lock_guard lock(mtx_);
     if (!audioSpeedFilter_) {
         AVFrame* dup = framePool_.get();
         if (dup && av_frame_ref(dup, frame) >= 0) {

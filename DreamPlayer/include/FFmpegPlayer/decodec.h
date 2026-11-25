@@ -87,12 +87,12 @@ protected:
     AVStream* stream_ = nullptr;
     AVPacket* packet_ = nullptr;
     int streamIndex_ = -1;
-    uint32_t decodecSerial_ = 0;
+    std::atomic<uint32_t> decodecSerial_ = 0;
     std::atomic<int> finishedSerial_ = -1;
-    double decodecTimer_ = 0;
+    std::atomic<double> decodecTimer_ = 0;
     bool decodeTimerValid_ = false;
 
-    bool isPause_ = true;
+    std::atomic<bool> isPause_ = true;
 
     Dream::OnSeekCallback onSeekCallback_ = nullptr;
 };

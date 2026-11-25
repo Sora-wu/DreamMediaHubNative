@@ -7,6 +7,7 @@
 
 #include <FFmpegPlayer/decodec.h>
 #include <FFmpegPlayer/audioSpeedFilter.h>
+#include <FFmpegPlayer/taskQueue.h>
 #include <common/FFmpegPool.hpp>
 
 #include <atomic>
@@ -51,6 +52,8 @@ private:
     void pushFrames(const std::vector<AVFrame*>& frames, double pts);
 
 private:
+    TaskQueue<AudioDecodec> taskQueue_;
+
     SwrContext* swrCtx_ = nullptr;
     std::unique_ptr<AudioSpeedFilter> audioSpeedFilter_;
     std::atomic<float> speed_ = 1.0f;

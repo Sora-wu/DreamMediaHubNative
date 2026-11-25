@@ -169,7 +169,7 @@ uint32_t FFmpegPlayer::getHeight() {
 }
 
 void FFmpegPlayer::seek(double targetPos, double seekRel) {
-    demuxer_->seekRequest(targetPos, seekRel);
+    demuxer_->seek(targetPos, seekRel);
 }
 
 int64_t FFmpegPlayer::getDuration() const {

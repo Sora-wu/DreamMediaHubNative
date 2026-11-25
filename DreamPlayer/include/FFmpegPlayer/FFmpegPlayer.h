@@ -26,7 +26,7 @@ public:
     void play() override;
     void pause() override;
     bool isPlaying() const override;
-    void stop() override;
+    void stop() override;       // TODO: 改成异步
 
     [[nodiscard]] uint32_t getWidth() override;
     [[nodiscard]] uint32_t getHeight() override;

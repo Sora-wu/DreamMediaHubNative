@@ -8,6 +8,7 @@
 #include <common/dataHandler.hpp>
 #include <FFmpegPlayer/mediaClock.h>
 #include <FFmpegPlayer/ffcore.h>
+#include <FFmpegPlayer/taskQueue.h>
 
 #include <vector>
 #include <condition_variable>
@@ -45,7 +46,7 @@ public:
     void threadFunc(std::stop_token st);
     void stopDemux();
 
-    void seekRequest(double targetPos, double seekRel);
+    void seek(double targetPos, double seekRel);
 
 private:
     void seek();
@@ -53,6 +54,7 @@ private:
 
 private:
     std::jthread thread_;
+    TaskQueue<Demuxer> taskQueue_;
 
     AVFormatContext* fmtCtx_ = nullptr;
     int64_t duration_ = AV_NOPTS_VALUE;
@@ -61,11 +63,5 @@ private:
     std::atomic<bool> isEof_ = false;
 
     AVPacket flushPkt_{};
-
-    bool hasSeekRequest_ = false;
-    double seekTargetPos_ = 0;
-    double seekRel_ = 0;
-    std::condition_variable cvRead_;
-    std::mutex mtx_;
     MediaClock& mediaClock_;
 };
