@@ -75,6 +75,9 @@ void Demuxer::threadFunc(std::stop_token st) {
             if ((res == AVERROR_EOF || avio_feof(fmtCtx_->pb)) && !isEof_) {
                 pushNullPacket();
                 isEof_ = true;
+                if (onDemuxStatusChangedCallback_) {
+                    onDemuxStatusChangedCallback_(true);
+                }
             }
             if (fmtCtx_->pb && fmtCtx_->pb->error) {
                 break;
@@ -84,6 +87,10 @@ void Demuxer::threadFunc(std::stop_token st) {
             continue;
         }
         else {
+            if (isEof_ && onDemuxStatusChangedCallback_) {
+                onDemuxStatusChangedCallback_(false);
+            }
+            
             isEof_ = false;
             handle(&pkt);
         }

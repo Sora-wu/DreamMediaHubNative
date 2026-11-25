@@ -52,12 +52,9 @@ public:
     // 处理来自解封装器的数据
     void handle(void* data) override;
 private:
-    // 检测线程 TODO: 看看后续是否能够去掉
-    void threadFunc(std::stop_token st);
-
     void shutdown() const;
-    // 仅检测线程
-    bool checkPlaybackCompleted();
+
+    void processChanged();
     void markPlaybackCompleted();
 
 private:
@@ -71,7 +68,11 @@ private:
     Dream::OnPlaybackCompletedCallback onPlaybackCompletedCallback_ = nullptr;
 
     std::unique_ptr<Demuxer> demuxer_;
-    std::unique_ptr<VideoDecodec> videoDecodec_;
-    std::unique_ptr<AudioDecodec> audioDecodec_;
+    std::atomic<bool> isDemuxerEof_ = false;
 
+    std::unique_ptr<VideoDecodec> videoDecodec_;
+    std::atomic<bool> isVideoDecodecEof_ = false;
+
+    std::unique_ptr<AudioDecodec> audioDecodec_;
+    std::atomic<bool> isAudioDecodecEof_ = false;
 };

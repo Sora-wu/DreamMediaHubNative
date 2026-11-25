@@ -19,6 +19,8 @@ struct Frame {
     double duration{};
 };
 
+using OnDecodecStatusChangedCallback = std::function<void(bool)>;
+
 class Decodec : public DataHandler {
 public:
     explicit Decodec(const AVPacket& flushPkt, std::size_t frameQueueSize) : flushPkt_(flushPkt), frameQue_(frameQueueSize) {}
@@ -66,6 +68,10 @@ public:
         onSeekCallback_ = cb;
     }
 
+    void setOnDecodecStatusChangedCallback(const OnDecodecStatusChangedCallback& cb) {
+        onDecodecStatusChangedCallback_ = cb;
+    }
+
 protected:
     virtual void threadFunc(std::stop_token st) = 0;
 
@@ -95,4 +101,5 @@ protected:
     std::atomic<bool> isPause_ = true;
 
     Dream::OnSeekCallback onSeekCallback_ = nullptr;
+    OnDecodecStatusChangedCallback onDecodecStatusChangedCallback_ = nullptr;
 };

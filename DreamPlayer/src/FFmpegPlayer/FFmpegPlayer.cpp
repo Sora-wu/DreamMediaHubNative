@@ -25,10 +25,22 @@ FFmpegPlayer::FFmpegPlayer() {
 
     demuxer_ = std::make_unique<Demuxer>(clock_);
     demuxer_->setNextHandler(this);
+    demuxer_->setOnDemuxStatusChangedCallback([this](bool isEof) {
+        isDemuxerEof_ = isEof;
+        processChanged();
+    });
 
     const AVPacket& flushPkt = demuxer_->getFlushPkt();
     videoDecodec_ = std::make_unique<VideoDecodec>(flushPkt, clock_, FRAME_VIDEO_SIZE);
+    videoDecodec_->setOnDecodecStatusChangedCallback([this](bool isEof) {
+        isVideoDecodecEof_ = isEof;
+        processChanged();
+    });
     audioDecodec_ = std::make_unique<AudioDecodec>(flushPkt, clock_, FRAME_AUDIO_SIZE);
+    audioDecodec_->setOnDecodecStatusChangedCallback([this](bool isEof) {
+        isAudioDecodecEof_ = isEof;
+        processChanged();
+    });
 }
 
 FFmpegPlayer::~FFmpegPlayer() {
@@ -91,11 +103,6 @@ bool FFmpegPlayer::open(const char* url) {
         videoDecodec_->start();
     }
     demuxer_->startDemux();
-
-    thread_ = std::jthread([this](std::stop_token st) {
-        threadFunc(st);
-    });
-    FFUtils::setThreadName(thread_, "monitor thread");
 
     return true;
 }
@@ -288,13 +295,6 @@ void FFmpegPlayer::handle(void* data) {
     }
 }
 
-void FFmpegPlayer::threadFunc(std::stop_token st) {
-    while (!st.stop_requested()) {
-        checkPlaybackCompleted();
-        std::this_thread::sleep_for(100ms);
-    }
-}
-
 void FFmpegPlayer::shutdown() const {
     if (videoDecodec_) {
         videoDecodec_->shutdown();
@@ -305,9 +305,10 @@ void FFmpegPlayer::shutdown() const {
     }
 }
 
-bool FFmpegPlayer::checkPlaybackCompleted() {
-    if (!demuxer_->isEof()) {
-        return false;
+void FFmpegPlayer::processChanged() {
+    bool isCompleted = true;
+    if (isDemuxerEof_ || !isVideoDecodecEof_ || !isAudioDecodecEof_) {
+        isCompleted = false;
     }
 
     auto isStreamDrained = [](Decodec* decodec) {
@@ -318,42 +319,37 @@ bool FFmpegPlayer::checkPlaybackCompleted() {
         return decodec->isDecodeFinished() && !decodec->hasBufferedFrames();
     };
 
-    // 播放完毕把对应的流关闭，避免后面继续解码
     bool isVideoStreamDrained = isStreamDrained(videoDecodec_.get());
-    if (isVideoStreamDrained && videoDecodec_) {
-        videoDecodec_->shutdown();
-    }
     bool isAudioStreamDrained = isStreamDrained(audioDecodec_.get());
-    if (isAudioStreamDrained && audioDecodec_) {
-        audioDecodec_->shutdown();
-    }
-
     if (!isVideoStreamDrained || !isAudioStreamDrained) {
-        if (playbackCompleted_) {
-            // 被重新打开，比如seek
-            if (videoDecodec_) {
-                videoDecodec_->reopen();
-            }
-            if (audioDecodec_) {
-                audioDecodec_->reopen();
-            }
-
-            playbackCompleted_ = false;
-        }
-
-        return false;
+        isCompleted = false;
     }
 
-    markPlaybackCompleted();
-    return true;
+    // 根据最后是否播放完成来判断接下来的行为
+    playbackCompleted_ = isCompleted;
+    if (playbackCompleted_) {
+        markPlaybackCompleted();
+    }
+    else {
+        if (videoDecodec_) {
+            videoDecodec_->reopen();
+        }
+        if (audioDecodec_) {
+            audioDecodec_->reopen();
+        }
+    }
+
+    return;
 }
 
 void FFmpegPlayer::markPlaybackCompleted() {
-    if (playbackCompleted_) {
-        return;
+    if (videoDecodec_) {
+        videoDecodec_->shutdown();
+    }
+    if (audioDecodec_) {
+        audioDecodec_->shutdown();
     }
 
-    playbackCompleted_ = true;
     clock_.pauseMasterClock();
 
     const double duration = demuxer_->getDuration();
@@ -369,7 +365,6 @@ void FFmpegPlayer::markPlaybackCompleted() {
     av_log(nullptr, AV_LOG_INFO, "current media player completed\n");
     setSpeed(1.0f);     // 当前媒体播放完毕之后重置速度
 
-    std::lock_guard lock(mtx_);
     if (onPlaybackCompletedCallback_) {
         onPlaybackCompletedCallback_();
     }
