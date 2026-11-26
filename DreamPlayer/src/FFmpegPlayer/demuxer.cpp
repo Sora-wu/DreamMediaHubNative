@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegPlayer/demuxer.h>
-#include <FFmpegPlayer/ffcore.h>
+#include <common/ffcore.hpp>
 
 #include <chrono>
 
@@ -75,8 +75,8 @@ void Demuxer::threadFunc(std::stop_token st) {
             if ((res == AVERROR_EOF || avio_feof(fmtCtx_->pb)) && !isEof_) {
                 pushNullPacket();
                 isEof_ = true;
-                if (onDemuxStatusChangedCallback_) {
-                    onDemuxStatusChangedCallback_(true);
+                if (onDemuxFinishedCallback_) {
+                    onDemuxFinishedCallback_();
                 }
             }
             if (fmtCtx_->pb && fmtCtx_->pb->error) {
@@ -86,15 +86,8 @@ void Demuxer::threadFunc(std::stop_token st) {
             std::this_thread::sleep_for(10ms);
             continue;
         }
-        else {
-            if (isEof_ && onDemuxStatusChangedCallback_) {
-                onDemuxStatusChangedCallback_(false);
-            }
-            
-            isEof_ = false;
-            handle(&pkt);
-        }
 
+        handle(&pkt);
         av_packet_unref(&pkt);
     }
 
@@ -140,10 +133,6 @@ void Demuxer::seek(double targetPos, double seekRel) {
             isEof_ = false;
         }
     });
-}
-
-void Demuxer::seek() {
-
 }
 
 void Demuxer::pushNullPacket() {

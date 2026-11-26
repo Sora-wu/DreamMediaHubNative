@@ -7,7 +7,7 @@
 
 #include <common/dataHandler.hpp>
 #include <FFmpegPlayer/mediaClock.h>
-#include <FFmpegPlayer/ffcore.h>
+#include <common/ffcore.hpp>
 #include <FFmpegPlayer/taskQueue.h>
 
 #include <vector>
@@ -17,7 +17,7 @@ extern "C" {
     struct AVStream;
 }
 
-using OnDemuxStatusChangedCallback = std::function<void(bool)>;
+using OnDemuxFinishedCallback = std::function<void()>;
 
 class Demuxer : public DataHandler {
 public:
@@ -49,18 +49,17 @@ public:
 
     void seek(double targetPos, double seekRel);
 
-    void setOnDemuxStatusChangedCallback(OnDemuxStatusChangedCallback callback) {
-        onDemuxStatusChangedCallback_ = std::move(callback);
+    void setOnDemuxStatusChangedCallback(OnDemuxFinishedCallback callback) {
+        onDemuxFinishedCallback_ = std::move(callback);
     }
 
 private:
-    void seek();
     void pushNullPacket();
 
 private:
     std::jthread thread_;
     TaskQueue<Demuxer> taskQueue_;
-    OnDemuxStatusChangedCallback onDemuxStatusChangedCallback_ = nullptr;
+    OnDemuxFinishedCallback onDemuxFinishedCallback_ = nullptr;
 
     AVFormatContext* fmtCtx_ = nullptr;
     int64_t duration_ = AV_NOPTS_VALUE;

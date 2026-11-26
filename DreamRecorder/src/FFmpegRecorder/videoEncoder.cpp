@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegRecorder/videoEncoder.h>
-#include <FFmpegRecorder/ffcore.h>
+#include <common/ffcore.hpp>
 
 namespace {
     constexpr uint32_t GOP_SIZE = 50;
@@ -105,8 +105,8 @@ void VideoEncoder::commitVideoBuffer(const VideoFrameBuffer& buffer, uint64_t pt
     userFramePool_.put(frame);
 }
 
-void VideoEncoder::run(std::stop_token st) {
-    Encoder::run(st);
-    av_log(nullptr, AV_LOG_INFO, "VideoEncoder::run exit\n");
+void VideoEncoder::threadFunc(std::stop_token st) {
+    Encoder::threadFunc(st);
+    av_log(nullptr, AV_LOG_INFO, "VideoEncoder::threadFunc exit\n");
 }
 

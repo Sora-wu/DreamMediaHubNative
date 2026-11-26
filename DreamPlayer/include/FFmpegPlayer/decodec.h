@@ -19,7 +19,7 @@ struct Frame {
     double duration{};
 };
 
-using OnDecodecStatusChangedCallback = std::function<void(bool)>;
+using OnDecodecFinishedCallback = std::function<void()>;
 
 class Decodec : public DataHandler {
 public:
@@ -68,8 +68,8 @@ public:
         onSeekCallback_ = cb;
     }
 
-    void setOnDecodecStatusChangedCallback(const OnDecodecStatusChangedCallback& cb) {
-        onDecodecStatusChangedCallback_ = cb;
+    void setOnDecodecStatusChangedCallback(const OnDecodecFinishedCallback& cb) {
+        onDecodecFinishedCallback_ = cb;
     }
 
 protected:
@@ -101,5 +101,5 @@ protected:
     std::atomic<bool> isPause_ = true;
 
     Dream::OnSeekCallback onSeekCallback_ = nullptr;
-    OnDecodecStatusChangedCallback onDecodecStatusChangedCallback_ = nullptr;
+    OnDecodecFinishedCallback onDecodecFinishedCallback_ = nullptr;
 };

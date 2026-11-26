@@ -5,11 +5,11 @@
 
 #pragma once
 
-#include <common/dreamThread.hpp>
 #include <common/dataHandler.hpp>
 #include <common/concurrentQueue.hpp>
 #include <common/FFmpegPool.hpp>
 
+#include <thread>
 #include <mutex>
 
 extern "C" {
@@ -24,7 +24,7 @@ extern "C" {
     struct AVFormatContext;
 }
 
-class Encoder : public DreamThread, public DataHandler {
+class Encoder : public DataHandler {
 public:
     explicit Encoder(uint32_t queSize = 0) : frameQue_(queSize) {}
     virtual ~Encoder() override;
@@ -32,13 +32,17 @@ public:
     virtual bool addStream(AVFormatContext& output, AVCodecID codecID);
     virtual bool initCodecContext(AVCodecID codecID) = 0;
 
-    void run(std::stop_token st) override;
+    void start();
+    virtual void threadFunc(std::stop_token st);
+    void exit();
     void close();
 
 protected:
     bool encodePacket(AVPacket* pkt);
 
 protected:
+    std::jthread thread_;
+
     ConcurrentQueue<AVFrame*> frameQue_;
     AVCodecContext* codecCtx_ = nullptr;
     AVStream* stream_ = nullptr;

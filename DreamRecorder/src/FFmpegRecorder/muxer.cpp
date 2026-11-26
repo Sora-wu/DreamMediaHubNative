@@ -3,11 +3,13 @@
 // Mail: sora-wu@foxmail.com
 //
 
+#include <common/ffcore.hpp>
 #include <FFmpegRecorder/muxer.h>
-#include <FFmpegRecorder/ffcore.h>
 
 #include <cstring>
 #include <unordered_map>
+
+using namespace std::literals;
 
 namespace {
     constexpr uint32_t VIDEO_STREAM_INDEX = 0;
@@ -70,7 +72,14 @@ void Muxer::cleanup() {
     }
 }
 
-void Muxer::run(std::stop_token st) {
+void Muxer::start() {
+    thread_ = std::jthread([this](std::stop_token st) {
+        threadFunc(st);
+    });
+    FFUtils::setThreadName(thread_, "Muxer thread");
+}
+
+void Muxer::threadFunc(std::stop_token st) {
     int res = avformat_write_header(fmtCtx_, nullptr);
     if (res < 0) {
         char error[AV_ERROR_MAX_STRING_SIZE]{};
@@ -82,7 +91,7 @@ void Muxer::run(std::stop_token st) {
     while (!st.stop_requested()) {
         AVPacket* pkt = getPacket();
         if (!pkt) {
-            msleep(1);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
 
@@ -116,6 +125,13 @@ void Muxer::run(std::stop_token st) {
 void Muxer::close() {
     videoPktQue_.close();
     audioPktQue_.close();
+}
+
+void Muxer::exit() {
+    thread_.request_stop();
+    if (thread_.joinable()) {
+        thread_.join();
+    }
 }
 
 void Muxer::handle(void* data) {

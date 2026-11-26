@@ -7,7 +7,7 @@
 
 #include <atomic>
 #include <common/concurrentQueue.hpp>
-#include <FFmpegPlayer/ffcore.h>
+#include <common/ffcore.hpp>
 
 struct Packet {
     AVPacket packet{};

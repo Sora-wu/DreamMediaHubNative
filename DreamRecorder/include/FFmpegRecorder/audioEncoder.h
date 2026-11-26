@@ -21,7 +21,7 @@ public:
     bool addStream(AVFormatContext& output, AVCodecID codecID) override;
     bool initCodecContext(AVCodecID codecID) override;
 
-    void run(std::stop_token st) override;
+    void threadFunc(std::stop_token st) override;
 
     bool pushData(const Dream::AudioFrameBuffer& buffer, uint64_t pts);
 

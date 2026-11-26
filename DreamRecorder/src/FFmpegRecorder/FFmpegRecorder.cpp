@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegRecorder/FFmpegRecorder.h>
-#include <FFmpegRecorder/ffcore.h>
+#include <common/ffcore.hpp>
 
 namespace {
     constexpr uint32_t VIDEO_QUE_SIZE = 5;
@@ -27,7 +27,7 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
             break;
         }
         videoEncoder_->setNextHandler(mux_.get());
-        videoEncoder_->start("video encoder thread");
+        videoEncoder_->start();
     } while (false);
 
     do {
@@ -44,7 +44,7 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
             break;
         }
         audioEncoder_->setNextHandler(mux_.get());
-        audioEncoder_->start("audio encoder thread");
+        audioEncoder_->start();
     } while (false);
 
     if (!audioEncoder_ && !videoEncoder_) {
@@ -53,7 +53,7 @@ void FFmpegRecorder::start(const char* path, const VideoParam& videoParam, const
     }
 
     av_dump_format(&output, 0, nullptr, true);
-    mux_->start("muxer thread");
+    mux_->start();
 }
 
 void FFmpegRecorder::stop() {

@@ -23,7 +23,7 @@ public:
     Dream::VideoFrameBuffer getVideoBuffer();
     void commitVideoBuffer(const Dream::VideoFrameBuffer& buffer, uint64_t pts);;
 
-    void run(std::stop_token st) override;
+    void threadFunc(std::stop_token st) override;
 
 private:
     Dream::VideoParam param_{};

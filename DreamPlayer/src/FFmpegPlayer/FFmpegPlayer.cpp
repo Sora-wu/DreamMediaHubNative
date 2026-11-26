@@ -3,8 +3,8 @@
 // Mail: sora-wu@foxmail.com
 //
 
+#include <common/ffcore.hpp>
 #include <FFmpegPlayer/FFmpegPlayer.h>
-#include <FFmpegPlayer/ffcore.h>
 #include <FFmpegPlayer/demuxer.h>
 #include <FFmpegPlayer/videoDecodec.h>
 #include <FFmpegPlayer/audioDecodec.h>
@@ -25,21 +25,18 @@ FFmpegPlayer::FFmpegPlayer() {
 
     demuxer_ = std::make_unique<Demuxer>(clock_);
     demuxer_->setNextHandler(this);
-    demuxer_->setOnDemuxStatusChangedCallback([this](bool isEof) {
-        isDemuxerEof_ = isEof;
-        processChanged();
+    demuxer_->setOnDemuxStatusChangedCallback([this]() {
+        tryComplete();
     });
 
     const AVPacket& flushPkt = demuxer_->getFlushPkt();
     videoDecodec_ = std::make_unique<VideoDecodec>(flushPkt, clock_, FRAME_VIDEO_SIZE);
-    videoDecodec_->setOnDecodecStatusChangedCallback([this](bool isEof) {
-        isVideoDecodecEof_ = isEof;
-        processChanged();
+    videoDecodec_->setOnDecodecStatusChangedCallback([this]() {
+        tryComplete();
     });
     audioDecodec_ = std::make_unique<AudioDecodec>(flushPkt, clock_, FRAME_AUDIO_SIZE);
-    audioDecodec_->setOnDecodecStatusChangedCallback([this](bool isEof) {
-        isAudioDecodecEof_ = isEof;
-        processChanged();
+    audioDecodec_->setOnDecodecStatusChangedCallback([this]() {
+        tryComplete();
     });
 }
 
@@ -50,7 +47,7 @@ FFmpegPlayer::~FFmpegPlayer() {
 }
 
 bool FFmpegPlayer::open(const char* url) {
-    cachedTime_ = 0.0;
+    stopping_ = false;
 
     if (!demuxer_->open(url)) {
         return false;
@@ -140,21 +137,19 @@ bool FFmpegPlayer::isPlaying() const {
 }
 
 void FFmpegPlayer::stop() {
-    thread_.request_stop();
-    shutdown();
-    if (thread_.joinable()) {
-        thread_.join();
+    {
+        std::lock_guard lock(mtx_);
+        stopping_ = true;
     }
 
-    // 监控线程可能在退出前重开过队列。它退出后再确保队列已关闭。
-    shutdown();
-
     if (audioDecodec_) {
+        audioDecodec_->shutdown();
         audioDecodec_->stop();
         audioDecodec_->setOnSeekCallback(nullptr);
     }
 
     if (videoDecodec_) {
+        videoDecodec_->shutdown();
         videoDecodec_->stop();
         videoDecodec_->setOnSeekCallback(nullptr);
     }
@@ -164,7 +159,6 @@ void FFmpegPlayer::stop() {
     setOnPlaybackCompletedCallback(nullptr);
 
     clock_.initClock(nullptr, nullptr);
-    cachedTime_ = 0.0;
 }
 
 uint32_t FFmpegPlayer::getWidth() {
@@ -177,25 +171,15 @@ uint32_t FFmpegPlayer::getHeight() {
 
 void FFmpegPlayer::seek(double targetPos, double seekRel) {
     demuxer_->seek(targetPos, seekRel);
+    playbackCompleted_ = false;
 }
 
 int64_t FFmpegPlayer::getDuration() const {
     return demuxer_->getDuration();
 }
 
-// 确保返回值不是nan或者大于duration
 double FFmpegPlayer::getCurrentTime() {
-    double currentTime = clock_.getMasterClock();
-    if (!isnan(currentTime)) {
-        cachedTime_ = currentTime;
-    }
-
-    const double duration = demuxer_->getDuration();
-    if (playbackCompleted_) {
-        return duration;
-    }
-
-    return std::min(cachedTime_.load(), duration);
+    return clock_.getMasterClock();
 }
 
 float FFmpegPlayer::getSpeed() {
@@ -214,11 +198,27 @@ void FFmpegPlayer::setSpeed(double speed) {
 }
 
 VideoFrame* FFmpegPlayer::getVideoFrame() {
-    return videoDecodec_ ? videoDecodec_->getVideoFrame() : nullptr;
+    if (!videoDecodec_) {
+        return nullptr;
+    }
+
+    VideoFrame* frame = videoDecodec_->getVideoFrame();
+    if (demuxer_->isEof() && !playbackCompleted_) {
+        tryComplete();
+    }
+    return frame;
 }
 
 AudioFrame* FFmpegPlayer::getAudioFrame() {
-    return audioDecodec_ ? audioDecodec_->getAudioFrame() : nullptr;
+    if (!audioDecodec_) {
+        return nullptr;
+    }
+
+    AudioFrame* frame = audioDecodec_->getAudioFrame();
+    if (demuxer_->isEof() && !playbackCompleted_) {
+        tryComplete();
+    }
+    return frame;
 }
 
 void FFmpegPlayer::updateAudioClock(double pts, uint32_t serial) {
@@ -295,22 +295,7 @@ void FFmpegPlayer::handle(void* data) {
     }
 }
 
-void FFmpegPlayer::shutdown() const {
-    if (videoDecodec_) {
-        videoDecodec_->shutdown();
-    }
-
-    if (audioDecodec_) {
-        audioDecodec_->shutdown();
-    }
-}
-
-void FFmpegPlayer::processChanged() {
-    bool isCompleted = true;
-    if (isDemuxerEof_ || !isVideoDecodecEof_ || !isAudioDecodecEof_) {
-        isCompleted = false;
-    }
-
+void FFmpegPlayer::tryComplete() {
     auto isStreamDrained = [](Decodec* decodec) {
         if (!decodec) {
             return true;
@@ -319,53 +304,33 @@ void FFmpegPlayer::processChanged() {
         return decodec->isDecodeFinished() && !decodec->hasBufferedFrames();
     };
 
-    bool isVideoStreamDrained = isStreamDrained(videoDecodec_.get());
-    bool isAudioStreamDrained = isStreamDrained(audioDecodec_.get());
-    if (!isVideoStreamDrained || !isAudioStreamDrained) {
-        isCompleted = false;
-    }
-
-    // 根据最后是否播放完成来判断接下来的行为
-    playbackCompleted_ = isCompleted;
-    if (playbackCompleted_) {
-        markPlaybackCompleted();
-    }
-    else {
-        if (videoDecodec_) {
-            videoDecodec_->reopen();
+    OnPlaybackCompletedCallback cb = nullptr;
+    {
+        std::lock_guard lock(mtx_);
+        if (stopping_ || !demuxer_->isEof() && !playbackCompleted_) {
+            return;
         }
-        if (audioDecodec_) {
-            audioDecodec_->reopen();
+
+        bool isVideoStreamDrained = isStreamDrained(videoDecodec_.get());
+        bool isAudioStreamDrained = isStreamDrained(audioDecodec_.get());
+        if (!isVideoStreamDrained || !isAudioStreamDrained) {
+            return;
         }
+
+        playbackCompleted_ = true;
+        clock_.pauseMasterClock();
+
+        const double duration = demuxer_->getDuration();
+
+        if (duration != AV_NOPTS_VALUE) {
+            clock_.setMasterClock(duration, CURRENT_TIME);
+        }
+
+        cb = onPlaybackCompletedCallback_;
     }
 
-    return;
-}
-
-void FFmpegPlayer::markPlaybackCompleted() {
-    if (videoDecodec_) {
-        videoDecodec_->shutdown();
-    }
-    if (audioDecodec_) {
-        audioDecodec_->shutdown();
-    }
-
-    clock_.pauseMasterClock();
-
-    const double duration = demuxer_->getDuration();
-    const double currentTime = clock_.getMasterClock();
-    if (isnan(currentTime)) {
-        return;
-    }
-    if (currentTime > duration) {
-        clock_.setMasterClock(duration, CURRENT_TIME);
-    }
-
-    shutdown();
     av_log(nullptr, AV_LOG_INFO, "current media player completed\n");
-    setSpeed(1.0f);     // 当前媒体播放完毕之后重置速度
-
-    if (onPlaybackCompletedCallback_) {
-        onPlaybackCompletedCallback_();
+    if (cb) {
+        cb();
     }
 }

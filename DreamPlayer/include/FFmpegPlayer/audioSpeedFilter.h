@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <FFmpegPlayer/ffcore.h>
+#include <common/ffcore.hpp>
 
 struct AVFilterGraph;
 struct AVFilterContext;

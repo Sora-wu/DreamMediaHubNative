@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegRecorder/audioEncoder.h>
-#include <FFmpegRecorder/ffcore.h>
+#include <common/ffcore.hpp>
 #include <DreamRecorder/DreamRecorderContext.h>
 
 #include <algorithm>
@@ -83,9 +83,9 @@ bool AudioEncoder::initCodecContext(AVCodecID codecID) {
     return true;
 }
 
-void AudioEncoder::run(std::stop_token st) {
-    Encoder::run(st);
-    av_log(nullptr, AV_LOG_INFO, "AudioEncoder::run exit\n");
+void AudioEncoder::threadFunc(std::stop_token st) {
+    Encoder::threadFunc(st);
+    av_log(nullptr, AV_LOG_INFO, "AudioEncoder::threadFunc exit\n");
 }
 
 bool AudioEncoder::pushData(const AudioFrameBuffer& buffer, uint64_t pts) {

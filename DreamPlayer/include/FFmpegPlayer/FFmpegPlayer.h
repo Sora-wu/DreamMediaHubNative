@@ -26,7 +26,7 @@ public:
     void play() override;
     void pause() override;
     bool isPlaying() const override;
-    void stop() override;       // TODO: 改成异步
+    void stop() override;
 
     [[nodiscard]] uint32_t getWidth() override;
     [[nodiscard]] uint32_t getHeight() override;
@@ -52,27 +52,18 @@ public:
     // 处理来自解封装器的数据
     void handle(void* data) override;
 private:
-    void shutdown() const;
-
-    void processChanged();
-    void markPlaybackCompleted();
+    void tryComplete();
 
 private:
-    std::jthread thread_;
     std::mutex mtx_;
 
     MediaClock clock_;
-    std::atomic<double> cachedTime_{0.0};
     std::atomic<bool> playbackCompleted_ = false;
+    bool stopping_ = false;
 
     Dream::OnPlaybackCompletedCallback onPlaybackCompletedCallback_ = nullptr;
 
     std::unique_ptr<Demuxer> demuxer_;
-    std::atomic<bool> isDemuxerEof_ = false;
-
     std::unique_ptr<VideoDecodec> videoDecodec_;
-    std::atomic<bool> isVideoDecodecEof_ = false;
-
     std::unique_ptr<AudioDecodec> audioDecodec_;
-    std::atomic<bool> isAudioDecodecEof_ = false;
 };

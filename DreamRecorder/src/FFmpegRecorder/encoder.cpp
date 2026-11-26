@@ -4,7 +4,7 @@
 //
 
 #include <FFmpegRecorder/encoder.h>
-#include <FFmpegRecorder/ffcore.h>
+#include <common/ffcore.hpp>
 
 namespace {
     bool padding = false;
@@ -57,7 +57,15 @@ bool Encoder::addStream(AVFormatContext& output, AVCodecID codecID) {
     return true;
 }
 
-void Encoder::run(std::stop_token st) {
+void Encoder::start() {
+    thread_ = std::jthread([this](std::stop_token st) {
+        threadFunc(st);
+    });
+    FFUtils::setThreadName(thread_, "Encoder thread");
+}
+
+void Encoder::threadFunc(std::stop_token st)
+{
     AVPacket* pkt = av_packet_alloc();
 
     while (!st.stop_requested()) {
@@ -71,6 +79,13 @@ void Encoder::run(std::stop_token st) {
     }
 
     av_packet_free(&pkt);
+}
+
+void Encoder::exit() {
+    if (thread_.joinable()) {
+        thread_.request_stop();
+        thread_.join();
+    }
 }
 
 void Encoder::close() {

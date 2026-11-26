@@ -96,7 +96,6 @@ void Decodec::cleanup()
 bool Decodec::decode(AVFrame* frame) {
     // 先Frame后Packet，两个操作错开，避免更多的AVERROR(EAGAIN)
     int res = AVERROR(EAGAIN);
-    bool isEof = true;
 
     while (true) {
         if (*pktQue_.getSerial() == decodecSerial_) {
@@ -109,6 +108,10 @@ bool Decodec::decode(AVFrame* frame) {
                 if (res == AVERROR_EOF) {
                     finishedSerial_ = decodecSerial_;
                     avcodec_flush_buffers(codecCtx_);
+                    if (onDecodecFinishedCallback_) {
+                        onDecodecFinishedCallback_();
+                    }
+
                     return false;
                 }
             } while (res != AVERROR(EAGAIN));
@@ -117,17 +120,7 @@ bool Decodec::decode(AVFrame* frame) {
         do {
             std::optional<Packet> packetOpt = pktQue_.pop();
             if (!packetOpt) {
-                isEof = true;
-                if (onDecodecStatusChangedCallback_) {
-                    onDecodecStatusChangedCallback_(true);
-                }
-
                 return false;
-            }
-
-            if (isEof && onDecodecStatusChangedCallback_) {
-                isEof = false;
-                onDecodecStatusChangedCallback_(false);
             }
 
             auto& [pkt, serial] = *packetOpt;

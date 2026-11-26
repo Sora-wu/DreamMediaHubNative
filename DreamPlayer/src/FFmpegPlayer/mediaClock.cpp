@@ -3,7 +3,7 @@
 // Mail: sora-wu@foxmail.com
 //
 
-#include <FFmpegPlayer/ffcore.h>
+#include <common/ffcore.hpp>
 #include <FFmpegPlayer/mediaClock.h>
 
 using namespace Dream;
