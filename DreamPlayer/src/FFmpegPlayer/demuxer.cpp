@@ -118,6 +118,7 @@ void Demuxer::seek(double targetPos, double seekRel) {
             av_log(nullptr, AV_LOG_ERROR, "Seek failed\n");
         }
         else {
+            isEof_ = false;
             // seek之后需要flush
             for (auto stream : streams_) {
                 flushPkt_.stream_index = stream->index;
@@ -129,8 +130,6 @@ void Demuxer::seek(double targetPos, double seekRel) {
             // seek成功更新时钟
             mediaClock_.setAudioClock(targetPos, CURRENT_TIME);
             mediaClock_.setVideoClock(targetPos, CURRENT_TIME);
-
-            isEof_ = false;
         }
     });
 }

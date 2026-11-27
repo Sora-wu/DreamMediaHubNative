@@ -171,7 +171,6 @@ uint32_t FFmpegPlayer::getHeight() {
 
 void FFmpegPlayer::seek(double targetPos, double seekRel) {
     demuxer_->seek(targetPos, seekRel);
-    playbackCompleted_ = false;
 }
 
 int64_t FFmpegPlayer::getDuration() const {
@@ -179,7 +178,8 @@ int64_t FFmpegPlayer::getDuration() const {
 }
 
 double FFmpegPlayer::getCurrentTime() {
-    return clock_.getMasterClock();
+    double currentTime = clock_.getMasterClock();
+    return isnan(currentTime) ? 0 : currentTime;
 }
 
 float FFmpegPlayer::getSpeed() {
@@ -243,7 +243,7 @@ void FFmpegPlayer::setOnSeekCallback(const OnSeekCallback& cb) {
         videoDecodec_->setOnSeekCallback(cb);
         return;
     }
-    else if (masterMode == SyncType::AudioMaster && audioDecodec_) {
+    if (masterMode == SyncType::AudioMaster && audioDecodec_) {
         audioDecodec_->setOnSeekCallback(cb);
         return;
     }
@@ -270,8 +270,8 @@ void FFmpegPlayer::setMasterMode(SyncType syncType) {
         cb = audioDecodec_->getOnSeekCallback();
     }
 
-    setOnSeekCallback(cb);
     clock_.setMasterMode(syncType);
+    setOnSeekCallback(cb);
 }
 
 SyncType FFmpegPlayer::getMasterMode() const {
@@ -280,6 +280,10 @@ SyncType FFmpegPlayer::getMasterMode() const {
 
 void FFmpegPlayer::handle(void* data) {
     AVPacket* pkt = static_cast<AVPacket*>(data);
+
+    if (&demuxer_->getFlushPkt() == pkt) {
+        playbackCompleted_ = false;
+    }
 
     if (videoDecodec_ && pkt->stream_index == videoDecodec_->getStreamIndex()) {
         videoDecodec_->handle(pkt);
@@ -307,7 +311,7 @@ void FFmpegPlayer::tryComplete() {
     OnPlaybackCompletedCallback cb = nullptr;
     {
         std::lock_guard lock(mtx_);
-        if (stopping_ || !demuxer_->isEof() && !playbackCompleted_) {
+        if (stopping_ || !demuxer_->isEof() || playbackCompleted_) {
             return;
         }
 
