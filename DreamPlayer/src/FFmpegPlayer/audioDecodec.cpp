@@ -79,6 +79,7 @@ void AudioDecodec::threadFunc(std::stop_token st) {
         return;
     }
 
+    uint32_t serial = decodecSerial_;
     double pts{};
     while (!st.stop_requested()) {
         while (!taskQueue_.empty()) {
@@ -97,6 +98,12 @@ void AudioDecodec::threadFunc(std::stop_token st) {
             continue;
         }
 
+        if (serial != decodecSerial_) {
+            serial = decodecSerial_;
+            swr_free(&swrCtx_);
+            audioDiffAvgCount_ = 0;
+            audioDiffCum_ = 0.0;
+        }
         std::vector<AVFrame*> frames = processFrame(frame);
         pts = static_cast<double>(frame->pts) / frame->sample_rate;
         pushFrames(frames, pts);
@@ -132,9 +139,8 @@ AudioFrame* AudioDecodec::getAudioFrame() {
     audioFrame_.pts = decodecTimer_;
     audioFrame_.serial = ap.serial;
 
-    if (fillData(frame) && !isPause_) {
-        audioFrame_.isUpdated = true;
-    }
+    fillData(frame);
+    audioFrame_.isUpdated = !isPause_;
 
     releaseFrame(ap);
     return &audioFrame_;
@@ -183,7 +189,7 @@ void AudioDecodec::cleanup() {
 }
 
 bool AudioDecodec::refreshSwr(AVFrame* frame) {
-    if (frame->sample_rate != cachedSampleRate_ || frame->channel_layout != cachedChannelLayout_ || frame->format != cachedFormat_) {
+    if (!swrCtx_ || frame->sample_rate != cachedSampleRate_ || frame->channel_layout != cachedChannelLayout_ || frame->format != cachedFormat_) {
         swr_free(&swrCtx_);
         swrCtx_ = swr_alloc_set_opts(nullptr,
                                      CHANNEL_LAYOUT, SAMPLE_FORMAT, SAMPLE_RATE,
@@ -206,102 +212,46 @@ bool AudioDecodec::refreshSwr(AVFrame* frame) {
     return true;
 }
 
-bool AudioDecodec::fillData(AVFrame* frame) {
-    if (!adjustSamples(frame)) {
-        return false;
-    }
-
+void AudioDecodec::fillData(AVFrame* frame) {
     const int bufferSize = av_samples_get_buffer_size(nullptr, frame->channels, frame->nb_samples, (AVSampleFormat)frame->format, 1);
     audioFrame_.len = bufferSize;
     updateAudioFrameSize(&audioFrame_, bufferSize);
     memcpy(audioFrame_.data, frame->data[0], bufferSize);
-
-    return true;
 }
 
-bool AudioDecodec::adjustSamples(AVFrame* frame) {
-    if (!FFUtils::isEqual(1.0f, speed_)) {
-        return true;
+int AudioDecodec::wantedSamples(const AVFrame* frame) {
+    const int samples = frame->nb_samples;
+    const double diff = mediaClock_.getAudioClock() - mediaClock_.getMasterClock();
+    if (!FFUtils::isEqual(1.0f, speed_) || mediaClock_.getMasterMode() != SyncType::VideoMaster
+        || !std::isfinite(diff) || std::abs(diff) >= AV_NOSYNC_THRESHOLD) {
+        audioDiffAvgCount_ = 0;
+        audioDiffCum_ = 0.0;
+        return samples;
     }
 
-    const int nbSamples = frame->nb_samples;
-    if (mediaClock_.getMasterMode() != SyncType::AudioMaster) {
-        int wantedNbSamples = 0;
-        const double diff = mediaClock_.getAudioClock() - mediaClock_.getMasterClock();
-
-        if (!std::isnan(diff) && std::fabs(diff) < AV_NOSYNC_THRESHOLD) {
-            audioDiffCum_ = diff + audioDiffAvgCoef_ * audioDiffCum_;
-
-            if (audioDiffAvgCount_ < AUDIO_DIFF_AVG_NB) {
-                // 测量次数不够，暂不进行对齐估算
-                audioDiffAvgCount_++;
-            } else {
-                // 计算滤波后的平均时钟差值
-                double avgDiff = audioDiffCum_ * (1.0 - audioDiffAvgCoef_);
-
-                // 当平均偏差超过设定的阈值时，触发采样数调整
-                if (std::fabs(avgDiff) >= audioDiffThreshold_) {
-                    wantedNbSamples = nbSamples + static_cast<int>(diff * SAMPLE_RATE);
-                    int delta = wantedNbSamples - nbSamples;
-                    int maxDelta = (SAMPLE_CORRECTION_PERCENT_MAX * nbSamples) / 100;
-
-                    // 边界控制：限制单次变调/调整的最大比例，防止声音过度撕裂或卡顿
-                    if (delta < 0) {
-                        if (delta < -maxDelta) {
-                            wantedNbSamples = nbSamples - maxDelta;
-                        }
-                    } else {
-                        if (delta > maxDelta) {
-                            wantedNbSamples = nbSamples + maxDelta;
-                        }
-                    }
-                }
-            }
-        } else {
-            // 偏差太大或出现异常（例如执行了 Seek 接入），直接重置同步状态
-            audioDiffAvgCount_ = 0;
-            audioDiffCum_ = 0;
-        }
-
-        if (wantedNbSamples != frame->nb_samples) {
-            const int32_t sampleDelta = static_cast<int32_t>(av_rescale_rnd(nbSamples - frame->nb_samples, SAMPLE_RATE, frame->sample_rate, AV_ROUND_UP));
-            const int32_t compensationDistance = static_cast<int32_t>(av_rescale_rnd(nbSamples, frame->sample_rate, SAMPLE_RATE, AV_ROUND_UP));
-            if (swr_set_compensation(swrCtx_, sampleDelta, compensationDistance) < 0) {
-                av_log(nullptr, AV_LOG_ERROR, "swr_set_compensation() failed\n");
-                return false;
-            }
-        }
+    audioDiffCum_ = diff + audioDiffAvgCoef_ * audioDiffCum_;
+    if (audioDiffAvgCount_ < AUDIO_DIFF_AVG_NB) {
+        ++audioDiffAvgCount_;
+        return samples;
+    }
+    if (std::abs(audioDiffCum_ * (1.0 - audioDiffAvgCoef_)) < audioDiffThreshold_) {
+        return samples;
     }
 
-    return true;
+    const int limit = samples * SAMPLE_CORRECTION_PERCENT_MAX / 100;
+    return samples + std::clamp(static_cast<int>(diff * frame->sample_rate), -limit, limit);
 }
 
 std::vector<AVFrame*> AudioDecodec::processFrame(AVFrame* frame) {
     std::vector<AVFrame*> frames;
 
-    if (!audioSpeedFilter_) {
-        AVFrame* dup = framePool_.get();
-        if (dup && av_frame_ref(dup, frame) >= 0) {
-            frames.push_back(dup);
-        }
-        return frames;
-    }
-
     AVFrame* converted = convertFrame(frame);
     if (!converted) {
-        AVFrame* dup = framePool_.get();
-        if (dup && av_frame_ref(dup, frame) >= 0) {
-            frames.push_back(dup);
-        }
         return frames;
     }
 
-    if (audioSpeedFilter_->addFrame(converted) < 0) {
-        framePool_.put(converted);
-        AVFrame* dup = framePool_.get();
-        if (dup && av_frame_ref(dup, frame) >= 0) {
-            frames.push_back(dup);
-        }
+    if (!audioSpeedFilter_ || audioSpeedFilter_->addFrame(converted) < 0) {
+        frames.push_back(converted);
         return frames;
     }
     framePool_.put(converted);
@@ -330,9 +280,12 @@ std::vector<AVFrame*> AudioDecodec::processFrame(AVFrame* frame) {
 }
 
 AVFrame* AudioDecodec::convertFrame(AVFrame* frame) {
-    if (frame->sample_rate == SAMPLE_RATE
-        && frame->format == SAMPLE_FORMAT
-        && frame->channel_layout == CHANNEL_LAYOUT) {
+    if (!frame->channel_layout) {
+        frame->channel_layout = av_get_default_channel_layout(frame->channels);
+    }
+    const int wanted = wantedSamples(frame);
+    if (!swrCtx_ && wanted == frame->nb_samples && frame->sample_rate == SAMPLE_RATE
+        && frame->format == SAMPLE_FORMAT && frame->channel_layout == CHANNEL_LAYOUT) {
         AVFrame* dup = framePool_.get();
         if (!dup || av_frame_ref(dup, frame) < 0) {
             framePool_.put(dup);
@@ -341,12 +294,22 @@ AVFrame* AudioDecodec::convertFrame(AVFrame* frame) {
         return dup;
     }
 
-    if (!refreshSwr(frame) || !swrCtx_) {
+    if (!refreshSwr(frame)) {
         return nullptr;
     }
 
-    const int64_t delay = swr_get_delay(swrCtx_, frame->sample_rate);
-    const int32_t outSampleCount = static_cast<int32_t>(av_rescale_rnd(frame->nb_samples + delay, SAMPLE_RATE, frame->sample_rate, AV_ROUND_UP));
+    if (wanted != frame->nb_samples) {
+        const int delta = av_rescale_rnd(wanted - frame->nb_samples, SAMPLE_RATE, frame->sample_rate, AV_ROUND_ZERO);
+        const int distance = av_rescale_rnd(wanted, SAMPLE_RATE, frame->sample_rate, AV_ROUND_UP);
+        if (delta && swr_set_compensation(swrCtx_, delta, distance) < 0) {
+            av_log(nullptr, AV_LOG_WARNING, "Could not apply audio sync compensation\n");
+        }
+    }
+
+    const int outSampleCount = swr_get_out_samples(swrCtx_, frame->nb_samples);
+    if (outSampleCount <= 0) {
+        return nullptr;
+    }
     AVFrame* dst = framePool_.get();
     if (!dst) {
         return nullptr;

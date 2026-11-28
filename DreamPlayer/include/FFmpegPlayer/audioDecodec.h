@@ -10,8 +10,6 @@
 #include <FFmpegPlayer/taskQueue.h>
 #include <common/FFmpegPool.hpp>
 
-#include <atomic>
-
 extern "C" {
     struct SwrContext;
 }
@@ -42,9 +40,9 @@ protected:
 
 private:
     bool refreshSwr(AVFrame* frame);
-    bool fillData(AVFrame* frame);
+    void fillData(AVFrame* frame);
     // 直接参考ffplay的实现
-    bool adjustSamples(AVFrame* frame);
+    int wantedSamples(const AVFrame* frame);
 
     std::vector<AVFrame*> processFrame(AVFrame* frame);
     AVFrame* convertFrame(AVFrame* frame);
@@ -56,7 +54,7 @@ private:
 
     SwrContext* swrCtx_ = nullptr;
     std::unique_ptr<AudioSpeedFilter> audioSpeedFilter_;
-    std::atomic<float> speed_ = 1.0f;
+    float speed_ = 1.0f;
     std::vector<AVFrame*> paddingFrames_;
     MediaClock& mediaClock_;
 

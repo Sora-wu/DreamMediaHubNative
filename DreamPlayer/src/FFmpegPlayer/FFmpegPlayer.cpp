@@ -47,8 +47,7 @@ FFmpegPlayer::~FFmpegPlayer() {
 }
 
 bool FFmpegPlayer::open(const char* url) {
-    stopping_ = false;
-
+    std::lock_guard lock(mtx_);
     if (!demuxer_->open(url)) {
         return false;
     }
@@ -99,8 +98,8 @@ bool FFmpegPlayer::open(const char* url) {
     if (videoDecodec_) {
         videoDecodec_->start();
     }
-    demuxer_->startDemux();
 
+    demuxer_->startDemux();
     return true;
 }
 
@@ -137,10 +136,14 @@ bool FFmpegPlayer::isPlaying() const {
 }
 
 void FFmpegPlayer::stop() {
+    // open 可能持锁等待 FFmpeg，先中断 I/O 再等初始化退出。
+    demuxer_->cancelIO();
     {
         std::lock_guard lock(mtx_);
         stopping_ = true;
     }
+
+    demuxer_->stopDemux();
 
     if (audioDecodec_) {
         audioDecodec_->shutdown();
@@ -153,8 +156,6 @@ void FFmpegPlayer::stop() {
         videoDecodec_->stop();
         videoDecodec_->setOnSeekCallback(nullptr);
     }
-
-    demuxer_->stopDemux();
 
     setOnPlaybackCompletedCallback(nullptr);
 

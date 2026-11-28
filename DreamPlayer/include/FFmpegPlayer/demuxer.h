@@ -44,6 +44,7 @@ public:
     }
 
     void startDemux();
+    void cancelIO() { taskQueue_.close(); }
     void threadFunc(std::stop_token st);
     void stopDemux();
 
@@ -59,6 +60,8 @@ private:
 private:
     std::jthread thread_;
     TaskQueue<Demuxer> taskQueue_;
+    std::atomic<uint64_t> seekRevision_ = 0;
+    std::atomic<bool> interruptOnTask_ = false;
     OnDemuxFinishedCallback onDemuxFinishedCallback_ = nullptr;
 
     AVFormatContext* fmtCtx_ = nullptr;

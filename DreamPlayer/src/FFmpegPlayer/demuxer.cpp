@@ -23,7 +23,22 @@ Demuxer::~Demuxer() {
 }
 
 bool Demuxer::open(const char* url) {
+    if (!url || fmtCtx_ || taskQueue_.isClosed()) {
+        return false;
+    }
+    fmtCtx_ = avformat_alloc_context();
+    if (!fmtCtx_) {
+        return false;
+    }
+    fmtCtx_->interrupt_callback = {[](void* opaque) -> int {
+        auto& self = *static_cast<Demuxer*>(opaque);
+        return self.taskQueue_.isClosed() || (self.interruptOnTask_ && !self.taskQueue_.empty());
+    }, this};
+
     int res = avformat_open_input(&fmtCtx_, url, nullptr, nullptr);
+    if (taskQueue_.isClosed()) {
+        return false;
+    }
     if (res < 0) {
         std::string errorStr = FFUtils::getError(res);
         av_log(nullptr, AV_LOG_FATAL, "Failed to open input, error code: %d, error message: %s path: %s\n", res, errorStr.c_str(), url);
@@ -31,7 +46,7 @@ bool Demuxer::open(const char* url) {
     }
 
     res = avformat_find_stream_info(fmtCtx_, nullptr);
-    if (res < 0) {
+    if (res < 0 || taskQueue_.isClosed()) {
         av_log(nullptr, AV_LOG_WARNING, "%s: could not find codec parameters\n", url);
         return false;
     }
@@ -53,6 +68,7 @@ bool Demuxer::open(const char* url) {
 }
 
 void Demuxer::startDemux() {
+    interruptOnTask_ = !fmtCtx_->pb || (fmtCtx_->pb->seekable & AVIO_SEEKABLE_NORMAL);
     thread_ = std::jthread([this](std::stop_token st) {
         threadFunc(st);
     });
@@ -64,15 +80,21 @@ void Demuxer::threadFunc(std::stop_token st) {
     int res = 0;
 
     while (!st.stop_requested()) {
-        while (!taskQueue_.empty()) {
-            if (auto task = taskQueue_.try_pop()) {
-                (*task)(*this);
+        while (auto task = taskQueue_.try_pop()) {
+            if (st.stop_requested()) {
+                return;
             }
+            (*task)(*this);
         }
 
         res = av_read_frame(fmtCtx_, &pkt);
         if (res < 0) {
-            if ((res == AVERROR_EOF || avio_feof(fmtCtx_->pb)) && !isEof_) {
+            // avio_feof 也可能补读。中断后先处理停止或排队的任务。
+            const bool eof = res == AVERROR_EOF || (!isEof_ && avio_feof(fmtCtx_->pb));
+            if (st.stop_requested() || !taskQueue_.empty()) {
+                continue;
+            }
+            if (eof && !isEof_) {
                 pushNullPacket();
                 isEof_ = true;
                 if (onDemuxFinishedCallback_) {
@@ -102,8 +124,16 @@ void Demuxer::stopDemux() {
 }
 
 void Demuxer::seek(double targetPos, double seekRel) {
-    taskQueue_.try_push([this, targetPos, seekRel](Demuxer& self) {
-        (void)self;
+    const auto revision = ++seekRevision_;
+    taskQueue_.try_push([this, targetPos, seekRel, revision](Demuxer&) {
+        if (revision != seekRevision_) {
+            return;
+        }
+        // 被新任务打断的读操作会在 AVIO 中留下错误，seek 前清掉本次中断。
+        if (fmtCtx_->pb && fmtCtx_->pb->error == AVERROR_EXIT) {
+            fmtCtx_->pb->error = 0;
+            fmtCtx_->pb->eof_reached = 0;
+        }
 
         int64_t pts = static_cast<int64_t>(targetPos * AV_TIME_BASE);
         int64_t offsetPts = static_cast<int64_t>(seekRel * AV_TIME_BASE);
